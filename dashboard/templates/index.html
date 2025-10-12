@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lost Persons Monitoring Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .chart-container {
+            position: relative;
+            height: 40vh;
+            width: 80vw;
+            margin: auto;
+            padding-bottom: 2rem;
+        }
+        .summary-table {
+            max-height: 220px;
+            overflow-y: auto;
+        }
+        .summary-table table {
+            font-size: 0.9rem;
+        }
+        .last-updated {
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center">Real-Time Lost Persons Statistics</h1>
+        <p class="text-center text-muted last-updated" id="lastUpdated">Last updated: --</p>
+        <div id="dashboardAlert" class="alert d-none" role="alert"></div>
+        <div class="row mt-5">
+            <div class="col-md-6">
+                <h3 class="text-center">By Age Group</h3>
+                <div class="chart-container">
+                    <canvas id="ageChart"></canvas>
+                </div>
+                <div id="ageSummary" class="summary-table mt-3"></div>
+            </div>
+            <div class="col-md-6">
+                <h3 class="text-center">By Gender</h3>
+                <div class="chart-container">
+                    <canvas id="genderChart"></canvas>
+                </div>
+                <div id="genderSummary" class="summary-table mt-3"></div>
+            </div>
+        </div>
+        <div class="row mt-5">
+            <div class="col-12">
+                <h3 class="text-center">By Hour of Report</h3>
+                <div class="chart-container">
+                    <canvas id="hourlyChart"></canvas>
+                </div>
+                <div id="hourlySummary" class="summary-table mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const REFRESH_INTERVAL_MS = 5000;
+            const CHART_COLORS = {
+                red: 'rgb(255, 99, 132)',
+                orange: 'rgb(255, 159, 64)',
+                yellow: 'rgb(255, 205, 86)',
+                green: 'rgb(75, 192, 192)',
+                blue: 'rgb(54, 162, 235)',
+                purple: 'rgb(153, 102, 255)',
+                grey: 'rgb(201, 203, 207)'
+            };
+
+            const charts = {};
+            const statusEl = document.getElementById('dashboardAlert');
+            const lastUpdatedEl = document.getElementById('lastUpdated');
+
+            const sections = [
+                {
+                    name: 'age',
+                    displayName: 'age group',
+                    canvasId: 'ageChart',
+                    tableId: 'ageSummary',
+                    endpoint: '/stats/age',
+                    type: 'pie',
+                    datasetLabel: 'Reports per Age Group',
+                    columns: ['Age Group', 'Count']
+                },
+                {
+                    name: 'gender',
+                    displayName: 'gender',
+                    canvasId: 'genderChart',
+                    tableId: 'genderSummary',
+                    endpoint: '/stats/gender',
+                    type: 'pie',
+                    datasetLabel: 'Reports per Gender',
+                    columns: ['Gender', 'Count']
+                },
+                {
+                    name: 'hourly',
+                    displayName: 'hourly',
+                    canvasId: 'hourlyChart',
+                    tableId: 'hourlySummary',
+                    endpoint: '/stats/hourly',
+                    type: 'bar',
+                    datasetLabel: 'Reports per Hour',
+                    columns: ['Hour', 'Count']
+                }
+            ];
+
+            function setStatus(message, type = 'warning') {
+                if (!statusEl) {
+                    return;
+                }
+                statusEl.textContent = message;
+                statusEl.classList.remove('d-none', 'alert-info', 'alert-warning', 'alert-danger', 'alert-success');
+                statusEl.classList.add(`alert-${type}`);
+            }
+
+            function clearStatus() {
+                if (!statusEl) {
+                    return;
+                }
+                statusEl.textContent = '';
+                statusEl.classList.add('d-none');
+                statusEl.classList.remove('alert-info', 'alert-warning', 'alert-danger', 'alert-success');
+            }
+
+            function updateTimestamp() {
+                if (!lastUpdatedEl) {
+                    return;
+                }
+                const now = new Date();
+                lastUpdatedEl.textContent = `Last updated: ${now.toLocaleString()}`;
+            }
+
+            function getBackgroundColors(chartType, labelCount) {
+                if (chartType === 'pie') {
+                    const palette = Object.values(CHART_COLORS);
+                    const colors = [];
+                    for (let i = 0; i < labelCount; i += 1) {
+                        colors.push(palette[i % palette.length]);
+                    }
+                    return colors;
+                }
+                return CHART_COLORS.blue;
+            }
+
+            function updateChart(section, labels, values) {
+                const { canvasId, type, datasetLabel } = section;
+                const backgroundColor = getBackgroundColors(type, labels.length);
+                let chart = charts[canvasId];
+
+                if (chart) {
+                    chart.data.labels = labels;
+                    chart.data.datasets[0].data = values;
+                    chart.data.datasets[0].backgroundColor = backgroundColor;
+                    chart.update();
+                    return;
+                }
+
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) {
+                    return;
+                }
+
+                chart = new Chart(canvas, {
+                    type,
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: datasetLabel,
+                            data: values,
+                            backgroundColor,
+                            borderWidth: type === 'pie' ? 1 : 0,
+                            borderRadius: type === 'bar' ? 4 : 0
+                        }]
+                    },
+                    options: type === 'bar' ? {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0
+                                }
+                            }
+                        }
+                    } : {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+
+                charts[canvasId] = chart;
+            }
+
+            function updateSummary(containerId, stats, columns) {
+                const container = document.getElementById(containerId);
+                if (!container) {
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                if (!stats.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'text-muted fst-italic';
+                    empty.textContent = 'No data available yet.';
+                    container.appendChild(empty);
+                    return;
+                }
+
+                const table = document.createElement('table');
+                table.className = 'table table-sm table-striped mb-0';
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+
+                columns.forEach((columnLabel) => {
+                    const th = document.createElement('th');
+                    th.scope = 'col';
+                    th.textContent = columnLabel;
+                    headerRow.appendChild(th);
+                });
+
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                let total = 0;
+
+                stats.forEach((item) => {
+                    const row = document.createElement('tr');
+                    const labelCell = document.createElement('td');
+                    const valueCell = document.createElement('td');
+
+                    const labelText = item.label ?? 'Unknown';
+                    const numericValue = Number(item.value ?? 0);
+                    total += Number.isFinite(numericValue) ? numericValue : 0;
+
+                    labelCell.textContent = labelText;
+                    valueCell.textContent = Number.isFinite(numericValue) ? numericValue : 0;
+
+                    row.appendChild(labelCell);
+                    row.appendChild(valueCell);
+                    tbody.appendChild(row);
+                });
+
+                table.appendChild(tbody);
+                container.appendChild(table);
+
+                const footer = document.createElement('div');
+                footer.className = 'text-end small text-muted pt-1';
+                footer.textContent = `Total: ${total}`;
+                container.appendChild(footer);
+            }
+
+            async function fetchStats(endpoint) {
+                const response = await fetch(endpoint, { cache: 'no-cache' });
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
+                return response.json();
+            }
+
+            async function refreshSection(section) {
+                try {
+                    const result = await fetchStats(section.endpoint);
+                    const stats = Array.isArray(result.data) ? result.data : [];
+                    const labels = stats.map((item) => item.label ?? 'Unknown');
+                    const values = stats.map((item) => {
+                        const numericValue = Number(item.value ?? 0);
+                        return Number.isFinite(numericValue) ? numericValue : 0;
+                    });
+
+                    updateChart(section, labels, values);
+                    updateSummary(section.tableId, stats, section.columns);
+                    return true;
+                } catch (error) {
+                    console.error(`Failed to load ${section.name} stats`, error);
+                    updateSummary(section.tableId, [], section.columns);
+                    setStatus(`Unable to load ${section.displayName} stats. ${error.message ?? 'Check the service logs.'}`, 'danger');
+                    return false;
+                }
+            }
+
+            async function updateDashboard() {
+                const results = await Promise.all(sections.map((section) => refreshSection(section)));
+                const hadFailure = results.some((result) => result === false);
+                const hadSuccess = results.some((result) => result === true);
+
+                if (hadSuccess) {
+                    updateTimestamp();
+                }
+
+                if (!hadFailure) {
+                    clearStatus();
+                }
+            }
+
+            setStatus('Fetching latest data...', 'info');
+            updateDashboard();
+            setInterval(updateDashboard, REFRESH_INTERVAL_MS);
+        });
+    </script>
+</body>
+</html>

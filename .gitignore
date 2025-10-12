@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+producer/venv/
+dashboard/venv/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Local data and logs
+*.log
+data/
+*.sqlite
+docker_logs_*.txt

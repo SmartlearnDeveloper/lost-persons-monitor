@@ -1,0 +1,27 @@
+{
+  "name": "lost-persons-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.mysql.MySqlConnector",
+    "tasks.max": "1",
+    "database.hostname": "mysql",
+    "database.port": "3306",
+    "database.user": "user",
+    "database.password": "password",
+    "database.server.id": "184054",
+    "topic.prefix": "lost_persons_server",
+    "database.include.list": "lost_persons_db",
+    "table.include.list": "lost_persons_db.persons_lost",
+    "database.allowPublicKeyRetrieval": "true",
+    "database.ssl.mode": "disabled",
+    "database.history.kafka.bootstrap.servers": "kafka:29092",
+    "database.history.kafka.topic": "dbhistory.lost_persons",
+    "database.history": "io.debezium.storage.kafka.history.KafkaSchemaHistory",
+    "schema.history.internal.kafka.topic": "dbhistory.lost_persons",
+    "schema.history.internal.kafka.bootstrap.servers": "kafka:29092",
+    "include.schema.changes": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false"
+  }
+}

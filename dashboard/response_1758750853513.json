@@ -1,0 +1,3 @@
+{
+  "detail": "Error al guardar en la base de datos: (mysql.connector.errors.DatabaseError) 1265 (01000): Data truncated for column 'gender' at row 1\n[SQL: INSERT INTO persons_lost (first_name, last_name, gender, birth_date, age, lost_timestamp, lost_location, details, status) VALUES (%(first_name)s, %(last_name)s, %(gender)s, %(birth_date)s, %(age)s, %(lost_timestamp)s, %(lost_location)s, %(details)s, %(status)s)]\n[parameters: {'first_name': 'string', 'last_name': 'string', 'gender': 'string', 'birth_date': datetime.date(2025, 9, 24), 'age': 0, 'lost_timestamp': datetime.datetime(2025, 9, 24, 21, 54, 13, 319640), 'lost_location': 'string', 'details': 'string', 'status': 'active'}]\n(Background on this error at: https://sqlalche.me/e/20/4xp6)"
+}

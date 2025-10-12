@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lost Persons Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f8f9fa 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        .card {
+            border: none;
+            border-radius: 1rem;
+            box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.15);
+            max-width: 720px;
+            width: 100%;
+        }
+        .card-header {
+            border-radius: 1rem 1rem 0 0 !important;
+            background: #0d6efd;
+            color: #fff;
+        }
+        .lead {
+            font-size: 1.05rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="card-header text-center py-4">
+            <h1 class="h3 mb-1">Lost Persons Monitor</h1>
+            <p class="mb-0">Herramienta unificada para reportes y analítica</p>
+        </div>
+        <div class="card-body p-4">
+            <p class="lead text-muted text-center mb-4">
+                Selecciona la experiencia que necesitas:
+            </p>
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="border rounded-4 h-100 p-4 bg-white">
+                        <h2 class="h5">Reportar persona perdida</h2>
+                        <p class="text-muted small mb-4">
+                            Genera datos aleatorios o captura manualmente los detalles para enviar el reporte al producer.
+                        </p>
+                        <a class="btn btn-primary w-100" href="/report">
+                            Abrir formulario
+                        </a>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="border rounded-4 h-100 p-4 bg-white">
+                        <h2 class="h5">Ver estadísticas</h2>
+                        <p class="text-muted small mb-4">
+                            Consulta la agregación en tiempo real de edades, genero y horario de reportes ingresados.
+                        </p>
+                        <a class="btn btn-outline-primary w-100" href="/dashboard">
+                            Ir al dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer text-center text-muted small py-3">
+            Lost Persons Monitor · CDC pipeline demo · {{ current_year }}
+        </div>
+    </div>
+</body>
+</html>

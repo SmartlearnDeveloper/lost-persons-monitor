@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lost Person Reporter Tester</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .page-container {
+            max-width: 900px;
+        }
+        .card {
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.05);
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4 page-container">
+        <div class="mb-4 text-center">
+            <h1 class="h3">Generador de Reportes de Personas Perdidas</h1>
+            <p class="text-muted mb-1">Genera datos aleatorios y envialos al producer con un solo clic.</p>
+            <p class="text-muted mb-0"><code>POST {{ producer_endpoint }}</code></p>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <form id="reportForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="firstName" class="form-label">Nombre</label>
+                            <input type="text" class="form-control" id="firstName" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="lastName" class="form-label">Apellido</label>
+                            <input type="text" class="form-control" id="lastName" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="gender" class="form-label">Genero</label>
+                            <select id="gender" class="form-select" required>
+                                <option value="" selected disabled>Selecciona...</option>
+                                <option value="F">Femenino</option>
+                                <option value="M">Masculino</option>
+                                <option value="O">Otro</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="birthDate" class="form-label">Fecha de nacimiento</label>
+                            <input type="date" class="form-control" id="birthDate" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="lostLocation" class="form-label">Ultima ubicacion</label>
+                            <input type="text" class="form-control" id="lostLocation">
+                        </div>
+                        <div class="col-12">
+                            <label for="details" class="form-label">Detalles</label>
+                            <textarea id="details" class="form-control" rows="3" placeholder="Vestimenta, acompañantes, datos de contacto, etc."></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="card-footer d-flex flex-wrap gap-2 justify-content-between">
+                <div>
+                    <button type="button" class="btn btn-outline-secondary me-2" id="generateBtn">Generar aleatorio</button>
+                    <button type="button" class="btn btn-outline-info" id="clearBtn">Limpiar formulario</button>
+                </div>
+                <button type="button" class="btn btn-primary" id="sendBtn">Enviar reporte</button>
+            </div>
+        </div>
+
+        <div id="alertContainer" class="alert d-none" role="alert"></div>
+
+        <div class="card">
+            <div class="card-header">
+                <strong>Latest request</strong>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <h6 class="text-muted text-uppercase">Carga enviada</h6>
+                        <pre id="payloadPreview" class="bg-light border rounded p-3 small mb-4"></pre>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted text-uppercase">Respuesta del API</h6>
+                        <pre id="responsePreview" class="bg-light border rounded p-3 small mb-0"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center text-muted mt-4 small">
+            Tip: deja esta página abierta mientras ves el dashboard para confirmar que las estadísticas se actualizan.
+        </footer>
+    </div>
+
+    <script>
+        const producerEndpoint = "{{ producer_endpoint }}";
+
+        const SAMPLE_FIRST_NAMES = ['Maria', 'Juan', 'Leila', 'Charles', 'Amelia', 'Diego', 'Sasha', 'Omar', 'Greta', 'Noah'];
+        const SAMPLE_LAST_NAMES = ['Lopez', 'Rodriguez', 'Chen', 'Khan', 'Young', 'Nakamura', 'Singh', 'Anders', 'Diaz', 'Baker'];
+        const SAMPLE_LOCATIONS = ['Denver, CO', 'Phoenix, AZ', 'Seattle, WA', 'Chicago, IL', 'San Juan, PR', 'Austin, TX', 'Portland, OR', 'New York, NY'];
+        const SAMPLE_NOTES = [
+            'Last seen near the central transit station.',
+            'Was wearing a green jacket and hiking boots.',
+            'Reported missing after failing to return from a morning run.',
+            'May respond to the nickname "Lulu".',
+            'Carrying a blue backpack with medical supplies.'
+        ];
+
+        const formEls = {
+            firstName: document.getElementById('firstName'),
+            lastName: document.getElementById('lastName'),
+            gender: document.getElementById('gender'),
+            birthDate: document.getElementById('birthDate'),
+            lostLocation: document.getElementById('lostLocation'),
+            details: document.getElementById('details')
+        };
+        const payloadPreview = document.getElementById('payloadPreview');
+        const responsePreview = document.getElementById('responsePreview');
+        const alertContainer = document.getElementById('alertContainer');
+        const sendBtn = document.getElementById('sendBtn');
+        const generateBtn = document.getElementById('generateBtn');
+        const clearBtn = document.getElementById('clearBtn');
+
+        function randomItem(list) {
+            return list[Math.floor(Math.random() * list.length)];
+        }
+
+        function randomBirthDate() {
+            const start = new Date('1940-01-01').getTime();
+            const end = new Date('2015-12-31').getTime();
+            const randomTime = Math.floor(Math.random() * (end - start)) + start;
+            const date = new Date(randomTime);
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${date.getFullYear()}-${month}-${day}`;
+        }
+
+        function serializePayload() {
+            return {
+                first_name: formEls.firstName.value.trim(),
+                last_name: formEls.lastName.value.trim(),
+                gender: formEls.gender.value,
+                birth_date: formEls.birthDate.value,
+                lost_location: formEls.lostLocation.value.trim() || null,
+                details: formEls.details.value.trim() || null
+            };
+        }
+
+        function updatePreview(payload, response) {
+            payloadPreview.textContent = payload ? JSON.stringify(payload, null, 2) : '';
+            responsePreview.textContent = response ? JSON.stringify(response, null, 2) : '';
+        }
+
+        function setAlert(message, type = 'info') {
+            alertContainer.textContent = message;
+            alertContainer.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-danger', 'alert-warning');
+            alertContainer.classList.add(`alert-${type}`);
+        }
+
+        function clearAlert() {
+            alertContainer.textContent = '';
+            alertContainer.classList.add('d-none');
+            alertContainer.classList.remove('alert-info', 'alert-success', 'alert-danger', 'alert-warning');
+        }
+
+        function populateSample() {
+            formEls.firstName.value = randomItem(SAMPLE_FIRST_NAMES);
+            formEls.lastName.value = randomItem(SAMPLE_LAST_NAMES);
+            const genderOptions = ['F', 'M', 'O'];
+            formEls.gender.value = randomItem(genderOptions);
+            formEls.birthDate.value = randomBirthDate();
+            formEls.lostLocation.value = randomItem(SAMPLE_LOCATIONS);
+            formEls.details.value = randomItem(SAMPLE_NOTES);
+            clearAlert();
+            updatePreview(serializePayload(), null);
+        }
+
+        function clearForm() {
+            Object.values(formEls).forEach((el) => {
+                if (el.tagName === 'SELECT') {
+                    el.value = '';
+                } else {
+                    el.value = '';
+                }
+            });
+            clearAlert();
+            updatePreview(null, null);
+        }
+
+        async function sendReport() {
+            const payload = serializePayload();
+            updatePreview(payload, null);
+
+            if (!payload.first_name || !payload.last_name || !payload.gender || !payload.birth_date) {
+                setAlert('Please fill in the required fields before sending.', 'warning');
+                return;
+            }
+
+            sendBtn.disabled = true;
+            setAlert('Sending report...', 'info');
+
+            try {
+                const response = await fetch(producerEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    const errorDetail = data?.detail || response.statusText;
+                    throw new Error(Array.isArray(errorDetail) ? errorDetail.join(', ') : String(errorDetail));
+                }
+
+                setAlert('Report sent successfully.', 'success');
+                updatePreview(payload, data);
+            } catch (error) {
+                console.error('Failed to send report', error);
+                setAlert(`Failed to send report: ${error.message}`, 'danger');
+                updatePreview(payload, { error: error.message });
+            } finally {
+                sendBtn.disabled = false;
+            }
+        }
+
+        generateBtn.addEventListener('click', populateSample);
+        clearBtn.addEventListener('click', clearForm);
+        sendBtn.addEventListener('click', sendReport);
+
+        populateSample();
+    </script>
+</body>
+</html>

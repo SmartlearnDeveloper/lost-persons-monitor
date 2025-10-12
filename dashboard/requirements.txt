@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+SQLAlchemy==2.0.15
+mysql-connector-python
+pydantic
+Jinja2
