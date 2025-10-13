@@ -19,11 +19,23 @@ Lost Persons Monitor is a change-data-capture (CDC) pipeline that ingests lost-p
 
 ## Web Application
 
-- `http://localhost:58102/` — landing page with links to the reporter form and analytics dashboard.
+- `http://localhost:58102/` — landing page with links to the reporter form, analytics dashboard, and PDF reports.
 - `http://localhost:58102/report` — simple GUI to generate random missing-person entries and post them to the producer API.
 - `http://localhost:58102/dashboard` — real-time charts plus tabular summaries driven by Debezium/Flink aggregates, with direct SQL fallbacks when aggregates are empty.
+- `http://localhost:58102/reports` — catalog of downloadable PDF reports with filterable inputs.
 
 The reporter UI issues `POST` requests to `http://localhost:58101/report_person/` (the producer service). A “Generar aleatorio” button pre-fills sample data so dispatch teams can simulate activity rapidly.
+
+## PDF Reports
+
+- **Alertas operativas** (`/reports/operational-alerts`) — configure a date and hour window, then generate a PDF that includes a gender distribution chart, location highlights, and a detailed roster of active cases. The PDF is assembled with Pandas, Matplotlib, and ReportLab to deliver a field-ready summary.
+- **Distribucion demografica** (`/reports/demographic-distribution`) — analiza la composicion por grupo etario y genero para un periodo determinado. Entrega graficos de barras/series y una tabla cruzada con totales por segmento.
+- **Mapa de ubicaciones** (`/reports/geographic-distribution`) — consolida reportes por ciudad/estado, genera graficos tematicos de concentracion y una tabla ordenada por zonas para planear despliegues.
+- **Analisis horario** (`/reports/hourly-analysis`) — identifica picos por hora, produce graficas comparativas y resume las horas mas criticas mediante tablas y mapas de calor.
+- **Resumen ejecutivo** (`/reports/executive-summary`) — sintetiza indicadores clave, graficas rapidas y casos recientes en un PDF listo para compartir con equipos directivos.
+- **Casos sensibles** (`/reports/sensitive-cases`) — filtra reportes mediante el catalogo configurable `config/sensitive_terms.json` y resalta alertas medicas o situaciones prioritarias.
+- Mas formatos se podran sumar reutilizando el mismo pipeline de datos y librerias graficas.
+- Each reporte permite elegir orientacion (`portrait` o `landscape`) y ajusta automaticamente tablas y graficas para respetar los margenes del documento.
 
 ## Producer API
 

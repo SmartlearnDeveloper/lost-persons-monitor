@@ -34,7 +34,7 @@
 <body>
     <div class="card">
         <div class="card-header text-center py-4">
-            <h1 class="h3 mb-1">Lost Persons Monitor</h1>
+            <h1 class="h3 mb-1">{{ brand_name }}</h1>
             <p class="mb-0">Herramienta unificada para reportes y analítica</p>
         </div>
         <div class="card-body p-4">
@@ -42,7 +42,7 @@
                 Selecciona la experiencia que necesitas:
             </p>
             <div class="row g-4">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <div class="border rounded-4 h-100 p-4 bg-white">
                         <h2 class="h5">Reportar persona perdida</h2>
                         <p class="text-muted small mb-4">
@@ -53,7 +53,7 @@
                         </a>
                     </div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <div class="border rounded-4 h-100 p-4 bg-white">
                         <h2 class="h5">Ver estadísticas</h2>
                         <p class="text-muted small mb-4">
@@ -64,10 +64,22 @@
                         </a>
                     </div>
                 </div>
+                <div class="col-md-4">
+                    <div class="border rounded-4 h-100 p-4 bg-white">
+                        <h2 class="h5">Reportes PDF</h2>
+                        <p class="text-muted small mb-4">
+                            Explora y genera reportes descargables con filtros de fecha y hora para compartir inteligencia.
+                        </p>
+                        <a class="btn btn-outline-secondary w-100" href="/reports">
+                            Ver reportes
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="card-footer text-center text-muted small py-3">
-            Lost Persons Monitor · CDC pipeline demo · {{ current_year }}
+            <div>{{ brand_name }} · CDC pipeline · {{ current_year }}</div>
+            <div class="mt-1">{{ brand_copyright }}</div>
         </div>
     </div>
 </body>

@@ -1,0 +1,22 @@
+[
+    {"term": "diabetes", "category": "Condicion medica", "severity": "Alta"},
+    {"term": "insulin", "category": "Condicion medica", "severity": "Alta"},
+    {"term": "alzheimer", "category": "Condicion cognitiva", "severity": "Alta"},
+    {"term": "demencia", "category": "Condicion cognitiva", "severity": "Alta"},
+    {"term": "epileps", "category": "Condicion neurologica", "severity": "Alta"},
+    {"term": "asma", "category": "Condicion respiratoria", "severity": "Media"},
+    {"term": "asthma", "category": "Condicion respiratoria", "severity": "Media"},
+    {"term": "oxygen", "category": "Soporte vital", "severity": "Alta"},
+    {"term": "oxigeno", "category": "Soporte vital", "severity": "Alta"},
+    {"term": "wheelchair", "category": "Movilidad reducida", "severity": "Media"},
+    {"term": "silla de ruedas", "category": "Movilidad reducida", "severity": "Media"},
+    {"term": "chemotherapy", "category": "Tratamientos criticos", "severity": "Alta"},
+    {"term": "quimioterap", "category": "Tratamientos criticos", "severity": "Alta"},
+    {"term": "pregnan", "category": "Condiciones especiales", "severity": "Media"},
+    {"term": "embaraz", "category": "Condiciones especiales", "severity": "Media"},
+    {"term": "autism", "category": "Condicion neurodiversa", "severity": "Media"},
+    {"term": "autismo", "category": "Condicion neurodiversa", "severity": "Media"},
+    {"term": "bipolar", "category": "Salud mental", "severity": "Media"},
+    {"term": "depresion", "category": "Salud mental", "severity": "Media"},
+    {"term": "schizophren", "category": "Salud mental", "severity": "Alta"}
+]

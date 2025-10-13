@@ -4,3 +4,8 @@ SQLAlchemy==2.0.15
 mysql-connector-python
 pydantic
 Jinja2
+pandas
+matplotlib
+numpy
+reportlab
+python-multipart

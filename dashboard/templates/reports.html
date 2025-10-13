@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reportes PDF - Lost Persons Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="h3 mb-0">Reportes en PDF</h1>
+                <small class="text-muted">Selecciona un reporte para configurar filtros y generar un PDF descargable.</small>
+            </div>
+            <a class="btn btn-outline-secondary" href="/">Volver al inicio</a>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h2 class="h5">Alertas operativas</h2>
+                        <p class="text-muted small">
+                            Lista detallada de personas perdidas con estado activo. Incluye datos clave y un resumen grafico para apoyar acciones de campo.
+                        </p>
+                        <a class="btn btn-primary" href="/reports/operational-alerts">
+                            Configurar reporte
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h2 class="h5">Distribucion demografica</h2>
+                        <p class="text-muted small">
+                            Analiza la composicion por grupo de edad y genero dentro de un rango seleccionado. Incluye graficos y tablas cruzadas para planear recursos.
+                        </p>
+                        <a class="btn btn-outline-primary" href="/reports/demographic-distribution">
+                            Configurar reporte
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h2 class="h5">Mapa de ubicaciones</h2>
+                        <p class="text-muted small">
+                            Visualiza el volumen de reportes por ciudad o estado, identifica concentraciones y descarga un mapa tematico con datos resumidos.
+                        </p>
+                        <a class="btn btn-outline-primary" href="/reports/geographic-distribution">
+                            Configurar reporte
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h2 class="h5">Analisis horario</h2>
+                        <p class="text-muted small">
+                            Estudia el comportamiento por hora del dia con graficas comparativas y tablas que reflejan los picos operativos.
+                        </p>
+                        <a class="btn btn-outline-primary" href="/reports/hourly-analysis">
+                            Configurar reporte
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h2 class="h5">Resumen ejecutivo</h2>
+                        <p class="text-muted small">
+                            Obtiene indicadores clave en una sola pagina: totales, graficas rapidas, ubicaciones destacadas y casos recientes.
+                        </p>
+                        <a class="btn btn-outline-primary" href="/reports/executive-summary">
+                            Configurar reporte
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h2 class="h5">Casos sensibles</h2>
+                        <p class="text-muted small">
+                            Identifica reportes con notas medicas o situaciones delicadas, mostrando detalles clave para atencion prioritaria.
+                        </p>
+                        <a class="btn btn-outline-primary" href="/reports/sensitive-cases">
+                            Configurar reporte
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <footer class="text-center text-muted small mt-4 mb-3">
+        {{ brand_name }} · {{ brand_copyright }}
+    </footer>
+</body>
+</html>

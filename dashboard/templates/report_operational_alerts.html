@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alertas operativas - Reporte PDF</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="h3 mb-0">Alertas operativas</h1>
+                <small class="text-muted">Configura el rango de fecha y hora antes de generar el PDF.</small>
+            </div>
+            <div class="d-flex gap-2">
+                <a class="btn btn-outline-secondary" href="/reports">Volver a reportes</a>
+                <a class="btn btn-outline-secondary" href="/">Inicio</a>
+            </div>
+        </div>
+
+        {% if error_message %}
+        <div class="alert alert-danger" role="alert">
+            {{ error_message }}
+        </div>
+        {% endif %}
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="post" class="row g-3">
+                    <div class="col-md-3">
+                        <label for="startDate" class="form-label">Fecha inicial</label>
+                        <input type="date" class="form-control" id="startDate" name="start_date" value="{{ start_date }}" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="endDate" class="form-label">Fecha final</label>
+                        <input type="date" class="form-control" id="endDate" name="end_date" value="{{ end_date }}" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="startHour" class="form-label">Hora inicial</label>
+                        <select class="form-select" id="startHour" name="start_hour">
+                            {% for hour in hours %}
+                            <option value="{{ hour }}" {% if hour == start_hour %}selected{% endif %}>{{ "%02d:00"|format(hour) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="endHour" class="form-label">Hora final</label>
+                        <select class="form-select" id="endHour" name="end_hour">
+                            {% for hour in hours %}
+                            <option value="{{ hour }}" {% if hour == end_hour %}selected{% endif %}>{{ "%02d:00"|format(hour) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="orientation" class="form-label">Orientacion de pagina</label>
+                        <select class="form-select" id="orientation" name="orientation">
+                            <option value="portrait" {% if orientation == "portrait" %}selected{% endif %}>Vertical (portrait)</option>
+                            <option value="landscape" {% if orientation == "landscape" %}selected{% endif %}>Horizontal (landscape)</option>
+                        </select>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary">
+                            Generar PDF
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="alert alert-info mt-4" role="alert">
+            El PDF incluye la lista detallada de los reportes activos, un resumen de volumen y una grafica por genero dentro del rango seleccionado.
+        </div>
+    </div>
+    <footer class="text-center text-muted small mt-4 mb-3">
+        {{ brand_report_footer }} {{ brand_copyright }}
+    </footer>
+</body>
+</html>
