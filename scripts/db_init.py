@@ -1,11 +1,12 @@
 import os
 import json
 import time
-from sqlalchemy import create_engine, text, Column, Integer, String, Date, DateTime, Enum, ForeignKey
+from sqlalchemy import create_engine, text, Column, Integer, String, Date, DateTime, Enum, ForeignKey, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from mysql.connector import errors as mysql_errors
 import datetime
+import enum
 
 # --- Cargar configuración de forma robusta ---
 # Construye la ruta al archivo de configuración relativa a la ubicación de este script
@@ -67,6 +68,41 @@ class AggHourly(Base):
     __tablename__ = 'agg_hourly'
     hour_of_day = Column(Integer, primary_key=True)
     count = Column(Integer)
+
+class CaseStatusEnum(enum.Enum):
+    NEW = "new"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    CANCELLED = "cancelled"
+    ARCHIVED = "archived"
+
+class Case(Base):
+    __tablename__ = 'case_cases'
+    case_id = Column(Integer, primary_key=True, autoincrement=True)
+    person_id = Column(Integer, ForeignKey('persons_lost.person_id'), nullable=False, unique=True)
+    status = Column(Enum(CaseStatusEnum), nullable=False, default=CaseStatusEnum.NEW)
+    priority = Column(String(50))
+    reported_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    resolved_at = Column(DateTime)
+    resolution_summary = Column(String(1000))
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    is_priority = Column(Boolean, default=False)
+
+    person = relationship("PersonLost", backref="case", uselist=False)
+    actions = relationship("CaseAction", cascade="all, delete-orphan", back_populates="case")
+
+class CaseAction(Base):
+    __tablename__ = 'case_actions'
+    action_id = Column(Integer, primary_key=True, autoincrement=True)
+    case_id = Column(Integer, ForeignKey('case_cases.case_id'), nullable=False)
+    action_type = Column(String(100), nullable=False)
+    notes = Column(String(2000))
+    actor = Column(String(200))
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    metadata_json = Column(String(2000))
+
+    case = relationship("Case", back_populates="actions")
 
 def init_db():
     """

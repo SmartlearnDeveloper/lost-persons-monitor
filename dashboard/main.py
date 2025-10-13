@@ -1,4 +1,5 @@
-from collections import Counter, defaultdict
+import os
+from collections import Counter
 from datetime import datetime, date, time, timedelta
 from html import escape
 from io import BytesIO
@@ -11,11 +12,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, Depends, Request, Form
+import httpx
+from fastapi import FastAPI, Depends, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, text
 import json
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER, landscape as landscape_pagesize
@@ -25,7 +27,14 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from dashboard.database import get_db
-from scripts.db_init import AggAgeGroup, AggGender, AggHourly, PersonLost
+from scripts.db_init import (
+    AggAgeGroup,
+    AggGender,
+    AggHourly,
+    Case,
+    CaseStatusEnum,
+    PersonLost,
+)
 
 app = FastAPI(title="Lost Persons Dashboard")
 templates = Jinja2Templates(directory="dashboard/templates")
@@ -35,6 +44,8 @@ WEEKDAY_NAMES_ES = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado
 BRAND_NAME = "Lost Persons Monitor"
 BRAND_OWNER = "ICM Software Development"
 BRAND_REPORT_FOOTER = f"Reporte generado por el sistema {BRAND_NAME}."
+CASE_MANAGER_URL = os.environ.get("CASE_MANAGER_URL", "http://localhost:58103")
+CASE_STATUS_VALUES = [status.value for status in CaseStatusEnum]
 SENSITIVE_TERMS: List[dict] = []
 SENSITIVE_INDEX: List[dict] = []
 SEVERITY_RANK = {"alta": 3, "media": 2, "baja": 1}
@@ -69,6 +80,18 @@ def _load_sensitive_terms() -> None:
 _load_sensitive_terms()
 
 
+def _case_manager_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
+    url = f"{CASE_MANAGER_URL}{path}"
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as exc:
+        print(f"Case manager request failed: {exc}")
+        return None
+
+
 def _current_year() -> int:
     return datetime.now().astimezone().year
 
@@ -85,6 +108,8 @@ def _template_context(request: Request, **kwargs) -> dict:
         "brand_owner": BRAND_OWNER,
         "brand_report_footer": BRAND_REPORT_FOOTER,
         "brand_copyright": _copyright_notice(),
+        "case_manager_url": CASE_MANAGER_URL,
+        "case_status_values": CASE_STATUS_VALUES,
     }
     base.update(kwargs)
     return base
@@ -1639,6 +1664,12 @@ async def read_report(request: Request):
     )
 
 
+@app.get("/cases", response_class=HTMLResponse)
+async def manage_cases(request: Request):
+    """UI for case management operations."""
+    return templates.TemplateResponse("cases.html", _template_context(request))
+
+
 @app.get("/reports/operational-alerts", response_class=HTMLResponse)
 async def read_operational_alerts_form(request: Request):
     """Render the filters for the operational alerts report."""
@@ -2391,3 +2422,103 @@ def get_hourly_stats(db: Session = Depends(get_db)):
     if stats:
         return {"data": [{"label": f"{s.hour_of_day}:00", "value": s.count} for s in stats]}
     return {"data": _fallback_hourly_stats(db)}
+
+
+def _case_summary_stats(db: Session) -> dict:
+    data = _case_manager_get("/cases/stats/summary")
+    if data:
+        return data
+    # fallback local computation
+    total_cases = db.query(func.count(Case.case_id)).scalar() or 0
+    resolved_cases = db.query(func.count(Case.case_id)).filter(Case.status == CaseStatusEnum.RESOLVED).scalar() or 0
+    pending_cases = (
+        db.query(func.count(Case.case_id))
+        .filter(Case.status.in_([CaseStatusEnum.NEW, CaseStatusEnum.IN_PROGRESS]))
+        .scalar()
+        or 0
+    )
+    avg_seconds = (
+        db.query(
+            func.avg(
+                func.timestampdiff(text("SECOND"), Case.reported_at, Case.resolved_at)
+            )
+        )
+        .filter(Case.status == CaseStatusEnum.RESOLVED)
+        .filter(Case.resolved_at.isnot(None))
+        .scalar()
+    )
+    avg_hours = round(float(avg_seconds) / 3600, 2) if avg_seconds else None
+    return {
+        "total_cases": total_cases,
+        "resolved_cases": resolved_cases,
+        "pending_cases": pending_cases,
+        "average_response_hours": avg_hours,
+    }
+
+
+def _case_time_series(db: Session, days: int) -> list[dict]:
+    data = _case_manager_get("/cases/stats/time-series", params={"range": f"{days}d" if days != 1 else "24h"})
+    if data and "points" in data:
+        return data["points"]
+    # fallback computation
+    start_date = datetime.utcnow() - timedelta(days=days)
+    reported = (
+        db.query(func.date(Case.reported_at).label("day"), func.count(Case.case_id))
+        .filter(Case.reported_at >= start_date)
+        .group_by(func.date(Case.reported_at))
+        .order_by(func.date(Case.reported_at))
+        .all()
+    )
+    resolved = (
+        db.query(func.date(Case.resolved_at).label("day"), func.count(Case.case_id))
+        .filter(Case.resolved_at.isnot(None))
+        .filter(Case.resolved_at >= start_date)
+        .filter(Case.status == CaseStatusEnum.RESOLVED)
+        .group_by(func.date(Case.resolved_at))
+        .order_by(func.date(Case.resolved_at))
+        .all()
+    )
+    reported_lookup = {row[0]: row[1] for row in reported}
+    resolved_lookup = {row[0]: row[1] for row in resolved}
+    points: list[dict] = []
+    current = start_date.date()
+    today = datetime.utcnow().date()
+    while current <= today:
+        points.append(
+            {
+                "date": current.isoformat(),
+                "reported": reported_lookup.get(current, 0),
+                "resolved": resolved_lookup.get(current, 0),
+            }
+        )
+        current += timedelta(days=1)
+    return points
+
+
+@app.get("/case-stats/summary")
+def case_summary(db: Session = Depends(get_db)):
+    return _case_summary_stats(db)
+
+
+@app.get("/case-stats/time-series")
+def case_time_series(range: str = Query("7d", pattern="^(24h|7d|30d)$"), db: Session = Depends(get_db)):
+    days = 1 if range == "24h" else 7 if range == "7d" else 30
+    points = _case_time_series(db, days)
+    return {"range": range, "points": points}
+
+
+@app.get("/persons/options")
+def person_options(db: Session = Depends(get_db)):
+    items = (
+        db.query(PersonLost.person_id, PersonLost.first_name, PersonLost.last_name)
+        .order_by(PersonLost.last_name.asc(), PersonLost.first_name.asc())
+        .all()
+    )
+    data = [
+        {
+            "person_id": person.person_id,
+            "label": f"{person.first_name} {person.last_name} (#{person.person_id})",
+        }
+        for person in items
+    ]
+    return {"items": data}

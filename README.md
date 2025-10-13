@@ -14,6 +14,7 @@ Lost Persons Monitor is a change-data-capture (CDC) pipeline that ingests lost-p
    `pip install -r dashboard/requirements.txt`
 5. Start the infrastructure with `docker-compose up -d`.
 6. Launch APIs locally with `uvicorn producer.main:app --reload --host 0.0.0.0 --port 58101` and `uvicorn dashboard.main:app --reload --host 0.0.0.0 --port 58102`.
+   To manage live case records, start the case manager service with `uvicorn case_manager.main:app --reload --host 0.0.0.0 --port 58103`.
 7. Once the stack is healthy, register the Debezium connector:  
    `curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:18084/connectors/ -d @debezium-connector.json`.
 
@@ -34,6 +35,7 @@ The reporter UI issues `POST` requests to `http://localhost:58101/report_person/
 - **Analisis horario** (`/reports/hourly-analysis`) — identifica picos por hora, produce graficas comparativas y resume las horas mas criticas mediante tablas y mapas de calor.
 - **Resumen ejecutivo** (`/reports/executive-summary`) — sintetiza indicadores clave, graficas rapidas y casos recientes en un PDF listo para compartir con equipos directivos.
 - **Casos sensibles** (`/reports/sensitive-cases`) — filtra reportes mediante el catalogo configurable `config/sensitive_terms.json` y resalta alertas medicas o situaciones prioritarias.
+- Todos los dashboards muestran la marca corporativa y un pie actualizado automáticamente con el año y propietario legal.
 - Mas formatos se podran sumar reutilizando el mismo pipeline de datos y librerias graficas.
 - Each reporte permite elegir orientacion (`portrait` o `landscape`) y ajusta automaticamente tablas y graficas para respetar los margenes del documento.
 
@@ -42,6 +44,15 @@ The reporter UI issues `POST` requests to `http://localhost:58101/report_person/
 - `POST /report_person/` — accepts the JSON payload produced by the reporter GUI (see `producer/models.py`).
 - `GET /report_person/?limit=10` — returns the most recent reports for manual verification.
 - `GET /` — health message describing available endpoints.
+
+## Case Manager API
+
+- `GET /cases` — list and filter active cases with pagination and search.
+- `POST /cases` / `PATCH /cases/{id}` — create or update case metadata, statuses and resolution details.
+- `POST /cases/{id}/actions` — append actions to a case timeline for audit tracking.
+- `GET /cases/stats/summary` — summary KPIs (total, resolved, pending, average response).
+- `GET /cases/stats/time-series?range=24h|7d|30d` — time-series data for reported vs resolved cases.
+- Case data is backed by the new schema (`case_cases`, `case_actions`) created via `scripts/db_init.py`.
 
 ## Documentation Index
 

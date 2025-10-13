@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Management · {{ brand_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f5f7fb; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .card-panel { background: #fff; border-radius: 16px; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); padding: 1.5rem; }
+        .table-wrapper { max-height: 420px; overflow-y: auto; }
+        .actions-log { height: 100%; }
+        .form-section { background: #fff; border-radius: 16px; padding: 1.5rem; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05); }
+        .badge-status { text-transform: uppercase; font-size: 0.75rem; }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="page-header">
+            <div>
+                <h1 class="h4 mb-1">Case Management</h1>
+                <p class="text-muted mb-0">Registra y actualiza el estado de los casos de personas perdidas.</p>
+            </div>
+            <a href="/" class="btn btn-outline-secondary btn-sm">Regresar al inicio</a>
+        </div>
+
+        <div id="casesAlert" class="alert d-none" role="alert"></div>
+
+        <div class="row g-4">
+            <div class="col-lg-4">
+                <div class="form-section">
+                    <h2 class="h6 mb-3">Crear nuevo caso</h2>
+                    <form id="createCaseForm" class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="personSelect">Persona</label>
+                            <select id="personSelect" class="form-select" required></select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="priorityInput">Prioridad</label>
+                            <input id="priorityInput" class="form-control" placeholder="Ej. Alta, Media" />
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="flagPriority" />
+                                <label class="form-check-label" for="flagPriority">Marcar como caso prioritario</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary w-100">Crear caso</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div class="card-panel table-wrapper">
+                    <table class="table table-hover align-middle" id="casesTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Persona</th>
+                                <th>Estado</th>
+                                <th>Prioridad</th>
+                                <th>Resuelto</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4 mt-1">
+            <div class="col-lg-6">
+                <div class="card-panel">
+                    <h2 class="h6">Detalles del caso seleccionado</h2>
+                    <form id="updateCaseForm" class="row g-3">
+                        <input type="hidden" id="caseIdField" />
+                        <div class="col-md-6">
+                            <label class="form-label" for="statusSelect">Estado</label>
+                            <select id="statusSelect" class="form-select" required>
+                                {% for value in case_status_values %}
+                                <option value="{{ value }}">{{ value.replace('_', ' ') | capitalize }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="updatePriority">Prioridad</label>
+                            <input id="updatePriority" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="resolvedAt">Fecha de resolución</label>
+                            <input id="resolvedAt" type="datetime-local" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="updateFlagPriority" />
+                                <label class="form-check-label" for="updateFlagPriority">Caso prioritario</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="resolutionSummary">Resumen de resolución</label>
+                            <textarea id="resolutionSummary" class="form-control" rows="2"></textarea>
+                        </div>
+                        <div class="col-12 d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                            <button type="button" id="resetSelection" class="btn btn-outline-secondary">Limpiar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card-panel actions-log">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h6 mb-0">Historial de acciones</h2>
+                        <button class="btn btn-sm btn-outline-primary" id="addActionBtn" disabled>Agregar acción</button>
+                    </div>
+                    <div id="actionsList" class="list-group list-group-flush" style="max-height: 360px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center text-muted small mt-4 mb-3">
+        {{ brand_name }} · {{ brand_copyright }}
+    </footer>
+
+    <script>
+        const CASE_MANAGER_URL = '{{ case_manager_url }}';
+        const statusLabels = {
+            new: 'Nuevo',
+            in_progress: 'En progreso',
+            resolved: 'Resuelto',
+            cancelled: 'Cancelado',
+            archived: 'Archivado'
+        };
+
+        const alertBox = document.getElementById('casesAlert');
+        const casesTableBody = document.querySelector('#casesTable tbody');
+        const createForm = document.getElementById('createCaseForm');
+        const personSelect = document.getElementById('personSelect');
+        const flagPriority = document.getElementById('flagPriority');
+        const updateForm = document.getElementById('updateCaseForm');
+        const caseIdField = document.getElementById('caseIdField');
+        const statusSelect = document.getElementById('statusSelect');
+        const updatePriority = document.getElementById('updatePriority');
+        const resolvedAt = document.getElementById('resolvedAt');
+        const updateFlagPriority = document.getElementById('updateFlagPriority');
+        const resolutionSummary = document.getElementById('resolutionSummary');
+        const resetSelection = document.getElementById('resetSelection');
+        const addActionBtn = document.getElementById('addActionBtn');
+        const actionsList = document.getElementById('actionsList');
+
+        function showAlert(message, variant = 'info') {
+            alertBox.textContent = message;
+            alertBox.className = `alert alert-${variant}`;
+            alertBox.classList.remove('d-none');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function clearAlert() {
+            alertBox.classList.add('d-none');
+        }
+
+        async function fetchJson(url, options = {}) {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `Request failed (${response.status})`);
+            }
+            return response.json();
+        }
+
+        function formatDate(value) {
+            if (!value) return '';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return '';
+            return date.toLocaleString();
+        }
+
+        function formatDateInput(value) {
+            if (!value) return '';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return '';
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        }
+
+        async function loadPersons() {
+            const data = await fetchJson('/persons/options');
+            personSelect.innerHTML = '<option value="" disabled selected>Selecciona una persona...</option>';
+            data.items.forEach((item) => {
+                const option = document.createElement('option');
+                option.value = item.person_id;
+                option.textContent = item.label;
+                personSelect.appendChild(option);
+            });
+        }
+
+        function renderCasesTable(items) {
+            casesTableBody.innerHTML = '';
+            items.forEach((item) => {
+                const row = document.createElement('tr');
+                row.dataset.caseId = item.case_id;
+                row.innerHTML = `
+                    <td>#${item.case_id}</td>
+                    <td>${item.person_id}</td>
+                    <td><span class="badge bg-secondary badge-status">${statusLabels[item.status] || item.status}</span></td>
+                    <td>${item.priority || '-'}</td>
+                    <td>${item.resolved_at ? formatDate(item.resolved_at) : '-'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary me-1" data-action="edit">Editar</button>
+                        <button class="btn btn-sm btn-outline-secondary" data-action="actions">Ver acciones</button>
+                    </td>
+                `;
+                casesTableBody.appendChild(row);
+            });
+        }
+
+        async function loadCases() {
+            const data = await fetchJson(`${CASE_MANAGER_URL}/cases?limit=200`);
+            renderCasesTable(data.items);
+        }
+
+        function resetSelectionForm() {
+            caseIdField.value = '';
+            statusSelect.value = 'new';
+            updatePriority.value = '';
+            resolvedAt.value = '';
+            updateFlagPriority.checked = false;
+            resolutionSummary.value = '';
+            addActionBtn.disabled = true;
+            actionsList.innerHTML = '<div class="text-muted">Selecciona un caso para ver su historial.</div>';
+        }
+
+        casesTableBody.addEventListener('click', async (event) => {
+            const button = event.target.closest('button[data-action]');
+            if (!button) return;
+            const row = button.closest('tr');
+            const caseId = row.dataset.caseId;
+            if (!caseId) return;
+
+            if (button.dataset.action === 'edit') {
+                try {
+                    const caseData = await fetchJson(`${CASE_MANAGER_URL}/cases/${caseId}`);
+                    caseIdField.value = caseData.case_id;
+                    statusSelect.value = caseData.status;
+                    updatePriority.value = caseData.priority || '';
+                    resolvedAt.value = formatDateInput(caseData.resolved_at);
+                    updateFlagPriority.checked = caseData.is_priority || false;
+                    resolutionSummary.value = caseData.resolution_summary || '';
+                    addActionBtn.disabled = false;
+                    loadActions(caseId);
+                } catch (error) {
+                    showAlert(error.message || 'Error al cargar el caso', 'danger');
+                }
+            } else if (button.dataset.action === 'actions') {
+                addActionBtn.disabled = false;
+                caseIdField.value = caseId;
+                await loadActions(caseId);
+            }
+        });
+
+        async function loadActions(caseId) {
+            try {
+                const data = await fetchJson(`${CASE_MANAGER_URL}/cases/${caseId}/actions`);
+                if (!data.length) {
+                    actionsList.innerHTML = '<div class="text-muted">Este caso no tiene acciones registradas.</div>';
+                    return;
+                }
+                actionsList.innerHTML = '';
+                data.forEach((action) => {
+                    const item = document.createElement('div');
+                    item.className = 'list-group-item';
+                    item.innerHTML = `
+                        <div class="d-flex justify-content-between">
+                            <strong>${action.action_type}</strong>
+                            <span class="text-muted small">${formatDate(action.created_at)}</span>
+                        </div>
+                        <div class="small text-muted">${action.actor || 'N/A'}</div>
+                        <p class="mb-0">${action.notes || 'Sin notas'}</p>
+                    `;
+                    actionsList.appendChild(item);
+                });
+            } catch (error) {
+                actionsList.innerHTML = `<div class="text-danger">${error.message || 'Error al cargar acciones'}</div>`;
+            }
+        }
+
+        createForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            clearAlert();
+            const personId = Number(personSelect.value);
+            if (!personId) {
+                showAlert('Selecciona una persona antes de crear el caso.', 'warning');
+                return;
+            }
+            try {
+                await fetchJson(`${CASE_MANAGER_URL}/cases`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        person_id: personId,
+                        priority: document.getElementById('priorityInput').value || null,
+                        is_priority: flagPriority.checked,
+                        status: 'new'
+                    })
+                });
+                showAlert('Caso creado correctamente.', 'success');
+                createForm.reset();
+                await loadCases();
+            } catch (error) {
+                showAlert(error.message || 'No fue posible crear el caso.', 'danger');
+            }
+        });
+
+        updateForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            clearAlert();
+            const caseId = caseIdField.value;
+            if (!caseId) {
+                showAlert('Selecciona un caso para poder actualizarlo.', 'warning');
+                return;
+            }
+            try {
+                await fetchJson(`${CASE_MANAGER_URL}/cases/${caseId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status: statusSelect.value,
+                        priority: updatePriority.value || null,
+                        resolved_at: resolvedAt.value ? new Date(resolvedAt.value).toISOString() : null,
+                        resolution_summary: resolutionSummary.value || null,
+                        is_priority: updateFlagPriority.checked
+                    })
+                });
+                showAlert('Caso actualizado.', 'success');
+                await Promise.all([loadCases(), loadActions(caseId)]);
+            } catch (error) {
+                showAlert(error.message || 'No fue posible actualizar el caso.', 'danger');
+            }
+        });
+
+        resetSelection.addEventListener('click', () => {
+            resetSelectionForm();
+        });
+
+        addActionBtn.addEventListener('click', async () => {
+            const caseId = caseIdField.value;
+            if (!caseId) {
+                showAlert('Selecciona un caso antes de agregar una acción.', 'warning');
+                return;
+            }
+            const actionType = prompt('Tipo de acción (ej. Llamada, Visita, Actualización)');
+            if (!actionType) return;
+            const notes = prompt('Notas adicionales (opcional)');
+            try {
+                await fetchJson(`${CASE_MANAGER_URL}/cases/${caseId}/actions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action_type: actionType, notes })
+                });
+                showAlert('Acción registrada.', 'success');
+                await loadActions(caseId);
+            } catch (error) {
+                showAlert(error.message || 'No fue posible registrar la acción.', 'danger');
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await loadPersons();
+                await loadCases();
+                resetSelectionForm();
+            } catch (error) {
+                showAlert(error.message || 'Error inicializando la página.', 'danger');
+            }
+        });
+    </script>
+</body>
+</html>

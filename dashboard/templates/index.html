@@ -3,53 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lost Persons Monitoring Dashboard</title>
+    <title>{{ brand_name }} Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        body {
+            background: #f5f7fb;
+            min-height: 100vh;
+        }
+        .dashboard-header {
+            background: #0d223d;
+            color: #fff;
+            border-radius: 16px;
+            padding: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .dashboard-header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        .status-banner {
+            margin-top: 1rem;
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            display: none;
+        }
+        .summary-grid {
+            margin-top: 1.5rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+        }
+        .summary-card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 1.25rem;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .summary-card h2 {
+            margin: 0;
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+        .summary-card span {
+            font-size: 0.9rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+        }
+        .charts-row {
+            margin-top: 2rem;
+            display: grid;
+            gap: 1.5rem;
+        }
+        .card-panel {
+            background: #fff;
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+        }
+        .card-panel h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #0f172a;
+        }
         .chart-container {
             position: relative;
-            height: 40vh;
-            width: 80vw;
-            margin: auto;
-            padding-bottom: 2rem;
+            min-height: 280px;
         }
         .summary-table {
             max-height: 220px;
             overflow-y: auto;
         }
         .summary-table table {
-            font-size: 0.9rem;
+            font-size: 0.88rem;
         }
-        .last-updated {
-            font-size: 0.9rem;
+        .timeseries-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .timeseries-toolbar .btn {
+            font-size: 0.85rem;
+        }
+        footer {
+            margin-top: 2rem;
         }
     </style>
 </head>
 <body>
-    <div class="container mt-4">
-        <h1 class="text-center">Real-Time Lost Persons Statistics</h1>
-        <p class="text-center text-muted last-updated" id="lastUpdated">Last updated: --</p>
-        <div id="dashboardAlert" class="alert d-none" role="alert"></div>
-        <div class="row mt-5">
-            <div class="col-md-6">
-                <h3 class="text-center">By Age Group</h3>
-                <div class="chart-container">
-                    <canvas id="ageChart"></canvas>
-                </div>
-                <div id="ageSummary" class="summary-table mt-3"></div>
+    <div class="container py-4">
+        <div class="dashboard-header">
+            <div>
+                <h1>{{ brand_name }} Dashboard</h1>
+                <div class="text-white-50">Actualizado: <span id="lastUpdated">--</span></div>
             </div>
-            <div class="col-md-6">
-                <h3 class="text-center">By Gender</h3>
-                <div class="chart-container">
-                    <canvas id="genderChart"></canvas>
-                </div>
-                <div id="genderSummary" class="summary-table mt-3"></div>
+            <button id="refreshButton" class="btn btn-light btn-sm">Refrescar</button>
+        </div>
+
+        <div id="statusBanner" class="status-banner"></div>
+
+        <div class="summary-grid">
+            <div class="summary-card">
+                <span>Total Reports</span>
+                <h2 id="totalReportsValue">--</h2>
+            </div>
+            <div class="summary-card">
+                <span>Resolved Cases</span>
+                <h2 id="resolvedCasesValue">--</h2>
+            </div>
+            <div class="summary-card">
+                <span>Pending Cases</span>
+                <h2 id="pendingCasesValue">--</h2>
+            </div>
+            <div class="summary-card">
+                <span>Avg Response Time</span>
+                <h2 id="avgResponseValue">--</h2>
             </div>
         </div>
-        <div class="row mt-5">
-            <div class="col-12">
-                <h3 class="text-center">By Hour of Report</h3>
+
+        <div class="charts-row">
+            <div class="card-panel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3>Reports Over Time</h3>
+                    <div class="timeseries-toolbar">
+                        <button class="btn btn-outline-secondary btn-sm" data-range="24h">24h</button>
+                        <button class="btn btn-outline-secondary btn-sm active" data-range="7d">7d</button>
+                        <button class="btn btn-outline-secondary btn-sm" data-range="30d">30d</button>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="reportsChart"></canvas>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="card-panel h-100">
+                        <h3>By Age Group</h3>
+                        <div class="chart-container">
+                            <canvas id="ageChart"></canvas>
+                        </div>
+                        <div id="ageSummary" class="summary-table mt-3"></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card-panel h-100">
+                        <h3>By Gender</h3>
+                        <div class="chart-container">
+                            <canvas id="genderChart"></canvas>
+                        </div>
+                        <div id="genderSummary" class="summary-table mt-3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-panel">
+                <h3>Reports by Hour</h3>
                 <div class="chart-container">
                     <canvas id="hourlyChart"></canvas>
                 </div>
@@ -57,13 +174,25 @@
             </div>
         </div>
     </div>
+
     <footer class="text-center text-muted small mt-4 mb-3">
         {{ brand_name }} · {{ brand_copyright }}
     </footer>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const REFRESH_INTERVAL_MS = 5000;
+            const REFRESH_INTERVAL_MS = 30000;
+            const summaryElements = {
+                total: document.getElementById('totalReportsValue'),
+                resolved: document.getElementById('resolvedCasesValue'),
+                pending: document.getElementById('pendingCasesValue'),
+                avgResponse: document.getElementById('avgResponseValue'),
+            };
+            const lastUpdatedEl = document.getElementById('lastUpdated');
+            const statusBanner = document.getElementById('statusBanner');
+            const refreshButton = document.getElementById('refreshButton');
+            const rangeButtons = document.querySelectorAll('[data-range]');
+
             const CHART_COLORS = {
                 red: 'rgb(255, 99, 132)',
                 orange: 'rgb(255, 159, 64)',
@@ -74,67 +203,68 @@
                 grey: 'rgb(201, 203, 207)'
             };
 
-            const charts = {};
-            const statusEl = document.getElementById('dashboardAlert');
-            const lastUpdatedEl = document.getElementById('lastUpdated');
+            const charts = {
+                age: null,
+                gender: null,
+                hourly: null,
+                reports: null
+            };
 
-            const sections = [
-                {
-                    name: 'age',
-                    displayName: 'age group',
-                    canvasId: 'ageChart',
-                    tableId: 'ageSummary',
-                    endpoint: '/stats/age',
-                    type: 'pie',
-                    datasetLabel: 'Reports per Age Group',
-                    columns: ['Age Group', 'Count']
-                },
-                {
-                    name: 'gender',
-                    displayName: 'gender',
-                    canvasId: 'genderChart',
-                    tableId: 'genderSummary',
-                    endpoint: '/stats/gender',
-                    type: 'pie',
-                    datasetLabel: 'Reports per Gender',
-                    columns: ['Gender', 'Count']
-                },
-                {
-                    name: 'hourly',
-                    displayName: 'hourly',
-                    canvasId: 'hourlyChart',
-                    tableId: 'hourlySummary',
-                    endpoint: '/stats/hourly',
-                    type: 'bar',
-                    datasetLabel: 'Reports per Hour',
-                    columns: ['Hour', 'Count']
-                }
-            ];
+            let currentRange = '7d';
+            let refreshTimer = null;
 
-            function setStatus(message, type = 'warning') {
-                if (!statusEl) {
-                    return;
+            async function fetchJson(url) {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
                 }
-                statusEl.textContent = message;
-                statusEl.classList.remove('d-none', 'alert-info', 'alert-warning', 'alert-danger', 'alert-success');
-                statusEl.classList.add(`alert-${type}`);
+                return response.json();
             }
 
-            function clearStatus() {
-                if (!statusEl) {
-                    return;
+            function formatNumber(value) {
+                if (value === null || value === undefined) {
+                    return '--';
                 }
-                statusEl.textContent = '';
-                statusEl.classList.add('d-none');
-                statusEl.classList.remove('alert-info', 'alert-warning', 'alert-danger', 'alert-success');
+                return new Intl.NumberFormat().format(value);
+            }
+
+            function formatHours(value) {
+                return value === null || value === undefined ? '--' : `${value.toFixed(1)} h`;
+            }
+
+            function updateSummaryCards(summary) {
+                summaryElements.total.textContent = formatNumber(summary.total_cases);
+                summaryElements.resolved.textContent = formatNumber(summary.resolved_cases);
+                summaryElements.pending.textContent = formatNumber(summary.pending_cases);
+                summaryElements.avgResponse.textContent = formatHours(summary.average_response_hours ?? null);
             }
 
             function updateTimestamp() {
-                if (!lastUpdatedEl) {
+                lastUpdatedEl.textContent = new Date().toLocaleString();
+            }
+
+            function setStatus(message, type = 'info') {
+                if (!message) {
+                    statusBanner.style.display = 'none';
+                    statusBanner.textContent = '';
+                    statusBanner.className = 'status-banner';
                     return;
                 }
-                const now = new Date();
-                lastUpdatedEl.textContent = `Last updated: ${now.toLocaleString()}`;
+                statusBanner.style.display = 'block';
+                statusBanner.textContent = message;
+                statusBanner.className = `status-banner bg-${type} text-${type === 'warning' ? 'dark' : 'white'}`;
+            }
+
+            function highlightRangeButton(range) {
+                rangeButtons.forEach((button) => {
+                    if (button.dataset.range === range) {
+                        button.classList.add('btn-primary');
+                        button.classList.remove('btn-outline-secondary');
+                    } else {
+                        button.classList.remove('btn-primary');
+                        button.classList.add('btn-outline-secondary');
+                    }
+                });
             }
 
             function getBackgroundColors(chartType, labelCount) {
@@ -149,162 +279,186 @@
                 return CHART_COLORS.blue;
             }
 
-            function updateChart(section, labels, values) {
-                const { canvasId, type, datasetLabel } = section;
-                const backgroundColor = getBackgroundColors(type, labels.length);
-                let chart = charts[canvasId];
-
-                if (chart) {
-                    chart.data.labels = labels;
-                    chart.data.datasets[0].data = values;
-                    chart.data.datasets[0].backgroundColor = backgroundColor;
-                    chart.update();
+            function updatePieChart(name, canvasId, labels, data, datasetLabel) {
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                const backgroundColor = getBackgroundColors('pie', labels.length);
+                if (charts[name]) {
+                    charts[name].data.labels = labels;
+                    charts[name].data.datasets[0].data = data;
+                    charts[name].data.datasets[0].backgroundColor = backgroundColor;
+                    charts[name].update();
                     return;
                 }
-
-                const canvas = document.getElementById(canvasId);
-                if (!canvas) {
-                    return;
-                }
-
-                chart = new Chart(canvas, {
-                    type,
+                charts[name] = new Chart(ctx, {
+                    type: 'pie',
                     data: {
                         labels,
                         datasets: [{
                             label: datasetLabel,
-                            data: values,
+                            data,
                             backgroundColor,
-                            borderWidth: type === 'pie' ? 1 : 0,
-                            borderRadius: type === 'bar' ? 4 : 0
+                            borderWidth: 1
                         }]
                     },
-                    options: type === 'bar' ? {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    precision: 0
-                                }
-                            }
-                        }
-                    } : {
+                    options: {
                         responsive: true,
                         maintainAspectRatio: false
                     }
                 });
-
-                charts[canvasId] = chart;
             }
 
-            function updateSummary(containerId, stats, columns) {
-                const container = document.getElementById(containerId);
-                if (!container) {
+            function updateBarChart(name, canvasId, labels, data) {
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                if (charts[name]) {
+                    charts[name].data.labels = labels;
+                    charts[name].data.datasets[0].data = data;
+                    charts[name].update();
                     return;
                 }
+                charts[name] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Reports per Hour',
+                            data,
+                            backgroundColor: CHART_COLORS.blue,
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, ticks: { precision: 0 } }
+                        }
+                    }
+                });
+            }
 
+            function updateReportsChart(points) {
+                const ctx = document.getElementById('reportsChart').getContext('2d');
+                const labels = points.map((item) => item.date);
+                const reported = points.map((item) => item.reported);
+                const resolved = points.map((item) => item.resolved);
+                if (charts.reports) {
+                    charts.reports.data.labels = labels;
+                    charts.reports.data.datasets[0].data = reported;
+                    charts.reports.data.datasets[1].data = resolved;
+                    charts.reports.update();
+                    return;
+                }
+                charts.reports = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: 'Reported',
+                                data: reported,
+                                borderColor: '#2563eb',
+                                backgroundColor: 'rgba(37, 99, 235, 0.15)',
+                                tension: 0.35,
+                                fill: true
+                            },
+                            {
+                                label: 'Resolved',
+                                data: resolved,
+                                borderColor: '#16a34a',
+                                backgroundColor: 'rgba(22, 163, 74, 0.15)',
+                                tension: 0.35,
+                                fill: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { precision: 0 } }
+                        }
+                    }
+                });
+            }
+
+            function updateSummaryTable(containerId, stats, columns) {
+                const container = document.getElementById(containerId);
+                if (!container) return;
                 container.innerHTML = '';
-
                 if (!stats.length) {
                     const empty = document.createElement('p');
-                    empty.className = 'text-muted fst-italic';
+                    empty.className = 'text-muted fst-italic mb-0';
                     empty.textContent = 'No data available yet.';
                     container.appendChild(empty);
                     return;
                 }
-
                 const table = document.createElement('table');
                 table.className = 'table table-sm table-striped mb-0';
                 const thead = document.createElement('thead');
                 const headerRow = document.createElement('tr');
-
                 columns.forEach((columnLabel) => {
                     const th = document.createElement('th');
                     th.scope = 'col';
                     th.textContent = columnLabel;
                     headerRow.appendChild(th);
                 });
-
                 thead.appendChild(headerRow);
                 table.appendChild(thead);
-
                 const tbody = document.createElement('tbody');
-                let total = 0;
-
                 stats.forEach((item) => {
                     const row = document.createElement('tr');
                     const labelCell = document.createElement('td');
+                    labelCell.textContent = item.label ?? 'Unknown';
                     const valueCell = document.createElement('td');
-
-                    const labelText = item.label ?? 'Unknown';
                     const numericValue = Number(item.value ?? 0);
-                    total += Number.isFinite(numericValue) ? numericValue : 0;
-
-                    labelCell.textContent = labelText;
                     valueCell.textContent = Number.isFinite(numericValue) ? numericValue : 0;
-
                     row.appendChild(labelCell);
                     row.appendChild(valueCell);
                     tbody.appendChild(row);
                 });
-
                 table.appendChild(tbody);
                 container.appendChild(table);
-
-                const footer = document.createElement('div');
-                footer.className = 'text-end small text-muted pt-1';
-                footer.textContent = `Total: ${total}`;
-                container.appendChild(footer);
             }
 
-            async function fetchStats(endpoint) {
-                const response = await fetch(endpoint, { cache: 'no-cache' });
-                if (!response.ok) {
-                    throw new Error(`Request failed with status ${response.status}`);
-                }
-                return response.json();
-            }
-
-            async function refreshSection(section) {
+            async function refreshDashboard(range = currentRange) {
                 try {
-                    const result = await fetchStats(section.endpoint);
-                    const stats = Array.isArray(result.data) ? result.data : [];
-                    const labels = stats.map((item) => item.label ?? 'Unknown');
-                    const values = stats.map((item) => {
-                        const numericValue = Number(item.value ?? 0);
-                        return Number.isFinite(numericValue) ? numericValue : 0;
-                    });
-
-                    updateChart(section, labels, values);
-                    updateSummary(section.tableId, stats, section.columns);
-                    return true;
-                } catch (error) {
-                    console.error(`Failed to load ${section.name} stats`, error);
-                    updateSummary(section.tableId, [], section.columns);
-                    setStatus(`Unable to load ${section.displayName} stats. ${error.message ?? 'Check the service logs.'}`, 'danger');
-                    return false;
-                }
-            }
-
-            async function updateDashboard() {
-                const results = await Promise.all(sections.map((section) => refreshSection(section)));
-                const hadFailure = results.some((result) => result === false);
-                const hadSuccess = results.some((result) => result === true);
-
-                if (hadSuccess) {
+                    const [summary, ageStats, genderStats, hourlyStats, timeSeries] = await Promise.all([
+                        fetchJson('/case-stats/summary'),
+                        fetchJson('/stats/age'),
+                        fetchJson('/stats/gender'),
+                        fetchJson('/stats/hourly'),
+                        fetchJson(`/case-stats/time-series?range=${range}`)
+                    ]);
+                    updateSummaryCards(summary);
+                    updatePieChart('age', 'ageChart', ageStats.data.map((d) => d.label), ageStats.data.map((d) => d.value), 'Reports per Age Group');
+                    updatePieChart('gender', 'genderChart', genderStats.data.map((d) => d.label), genderStats.data.map((d) => d.value), 'Reports per Gender');
+                    updateBarChart('hourly', 'hourlyChart', hourlyStats.data.map((d) => d.label), hourlyStats.data.map((d) => d.value));
+                    updateSummaryTable('ageSummary', ageStats.data, ['Grupo', 'Reportes']);
+                    updateSummaryTable('genderSummary', genderStats.data, ['Genero', 'Reportes']);
+                    updateSummaryTable('hourlySummary', hourlyStats.data, ['Hora', 'Reportes']);
+                    updateReportsChart(timeSeries.points);
                     updateTimestamp();
-                }
-
-                if (!hadFailure) {
-                    clearStatus();
+                    setStatus('', 'info');
+                } catch (error) {
+                    console.error('Failed to refresh dashboard', error);
+                    setStatus('Network error fetching metrics. Please check your connection or try again.', 'danger');
                 }
             }
 
-            setStatus('Fetching latest data...', 'info');
-            updateDashboard();
-            setInterval(updateDashboard, REFRESH_INTERVAL_MS);
+            refreshButton.addEventListener('click', () => refreshDashboard());
+            rangeButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const range = button.dataset.range;
+                    currentRange = range;
+                    highlightRangeButton(range);
+                    refreshDashboard(range);
+                });
+            });
+
+            highlightRangeButton(currentRange);
+            refreshDashboard(currentRange);
+            refreshTimer = setInterval(() => refreshDashboard(currentRange), REFRESH_INTERVAL_MS);
         });
     </script>
 </body>
