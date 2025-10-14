@@ -112,16 +112,28 @@
 
         <div class="summary-grid">
             <div class="summary-card">
-                <span>Total Reports</span>
-                <h2 id="totalReportsValue">--</h2>
+                <span>Total Cases</span>
+                <h2 id="totalCasesValue">--</h2>
             </div>
             <div class="summary-card">
-                <span>Resolved Cases</span>
+                <span>New</span>
+                <h2 id="newCasesValue">--</h2>
+            </div>
+            <div class="summary-card">
+                <span>In Progress</span>
+                <h2 id="inProgressCasesValue">--</h2>
+            </div>
+            <div class="summary-card">
+                <span>Resolved</span>
                 <h2 id="resolvedCasesValue">--</h2>
             </div>
             <div class="summary-card">
-                <span>Pending Cases</span>
-                <h2 id="pendingCasesValue">--</h2>
+                <span>Cancelled</span>
+                <h2 id="cancelledCasesValue">--</h2>
+            </div>
+            <div class="summary-card">
+                <span>Archived</span>
+                <h2 id="archivedCasesValue">--</h2>
             </div>
             <div class="summary-card">
                 <span>Avg Response Time</span>
@@ -183,9 +195,12 @@
         document.addEventListener('DOMContentLoaded', () => {
             const REFRESH_INTERVAL_MS = 30000;
             const summaryElements = {
-                total: document.getElementById('totalReportsValue'),
+                total: document.getElementById('totalCasesValue'),
+                newCases: document.getElementById('newCasesValue'),
+                inProgress: document.getElementById('inProgressCasesValue'),
                 resolved: document.getElementById('resolvedCasesValue'),
-                pending: document.getElementById('pendingCasesValue'),
+                cancelled: document.getElementById('cancelledCasesValue'),
+                archived: document.getElementById('archivedCasesValue'),
                 avgResponse: document.getElementById('avgResponseValue'),
             };
             const lastUpdatedEl = document.getElementById('lastUpdated');
@@ -234,8 +249,11 @@
 
             function updateSummaryCards(summary) {
                 summaryElements.total.textContent = formatNumber(summary.total_cases);
+                summaryElements.newCases.textContent = formatNumber(summary.new_cases);
+                summaryElements.inProgress.textContent = formatNumber(summary.in_progress_cases);
                 summaryElements.resolved.textContent = formatNumber(summary.resolved_cases);
-                summaryElements.pending.textContent = formatNumber(summary.pending_cases);
+                summaryElements.cancelled.textContent = formatNumber(summary.cancelled_cases);
+                summaryElements.archived.textContent = formatNumber(summary.archived_cases);
                 summaryElements.avgResponse.textContent = formatHours(summary.average_response_hours ?? null);
             }
 
@@ -406,12 +424,14 @@
                 thead.appendChild(headerRow);
                 table.appendChild(thead);
                 const tbody = document.createElement('tbody');
+                let total = 0;
                 stats.forEach((item) => {
                     const row = document.createElement('tr');
                     const labelCell = document.createElement('td');
                     labelCell.textContent = item.label ?? 'Unknown';
                     const valueCell = document.createElement('td');
                     const numericValue = Number(item.value ?? 0);
+                     total += Number.isFinite(numericValue) ? numericValue : 0;
                     valueCell.textContent = Number.isFinite(numericValue) ? numericValue : 0;
                     row.appendChild(labelCell);
                     row.appendChild(valueCell);
@@ -419,6 +439,11 @@
                 });
                 table.appendChild(tbody);
                 container.appendChild(table);
+
+                const footer = document.createElement('div');
+                footer.className = 'text-end small text-muted pt-1';
+                footer.textContent = `Total: ${total}`;
+                container.appendChild(footer);
             }
 
             async function refreshDashboard(range = currentRange) {

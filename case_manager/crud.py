@@ -146,14 +146,15 @@ def list_case_actions(db: Session, *, case_id: int) -> List[CaseAction]:
 
 
 def get_cases_summary(db: Session) -> dict:
-    total_cases = db.query(func.count(Case.case_id)).scalar() or 0
-    resolved_cases = db.query(func.count(Case.case_id)).filter(Case.status == CaseStatusEnum.RESOLVED).scalar() or 0
-    pending_cases = (
-        db.query(func.count(Case.case_id))
-        .filter(Case.status.in_(list(PENDING_STATUSES)))
-        .scalar()
-        or 0
+    counts = dict(
+        db.query(Case.status, func.count(Case.case_id)).group_by(Case.status).all()
     )
+    new_count = int(counts.get(CaseStatusEnum.NEW, 0))
+    in_progress_count = int(counts.get(CaseStatusEnum.IN_PROGRESS, 0))
+    resolved_count = int(counts.get(CaseStatusEnum.RESOLVED, 0))
+    cancelled_count = int(counts.get(CaseStatusEnum.CANCELLED, 0))
+    archived_count = int(counts.get(CaseStatusEnum.ARCHIVED, 0))
+    total_cases = new_count + in_progress_count + resolved_count + cancelled_count + archived_count
 
     avg_seconds = (
         db.query(
@@ -169,8 +170,11 @@ def get_cases_summary(db: Session) -> dict:
 
     return {
         "total_cases": total_cases,
-        "resolved_cases": resolved_cases,
-        "pending_cases": pending_cases,
+        "new_cases": new_count,
+        "in_progress_cases": in_progress_count,
+        "resolved_cases": resolved_count,
+        "cancelled_cases": cancelled_count,
+        "archived_cases": archived_count,
         "average_response_hours": avg_hours,
     }
 

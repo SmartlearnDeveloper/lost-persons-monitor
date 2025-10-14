@@ -53,6 +53,7 @@ The reporter UI issues `POST` requests to `http://localhost:58101/report_person/
 - `GET /cases/stats/summary` — summary KPIs (total, resolved, pending, average response).
 - `GET /cases/stats/time-series?range=24h|7d|30d` — time-series data for reported vs resolved cases.
 - Case data is backed by the new schema (`case_cases`, `case_actions`) created via `scripts/db_init.py`.
+- Personaliza prioridades (`config/case_priorities.json`) y tipos de acción (`config/case_action_types.json`) sin tocar el código.
 
 ## Documentation Index
 

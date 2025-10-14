@@ -15,6 +15,8 @@
 - Agrega "Casos sensibles" con catalogo de terminos configurable, graficos de categorias y tabla resaltada de casos prioritarios.
 - Introduce el servicio `case_manager` con operaciones CRUD, timeline de acciones y KPI endpoints reutilizados por el dashboard.
 - Actualiza la UI del dashboard con tarjetas de KPI, grafica temporal y branding corporativo consistente.
+- Incorpora un gestor web de casos con prioridades configurables (`config/case_priorities.json`) y tipos de acción (`config/case_action_types.json`).
+- Refuerza los KPIs del dashboard (new/in-progress/resolved/cancelled/archived y promedio de respuesta) y añade totales en tablas.
 
 ## Verification Checklist
 

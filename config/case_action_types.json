@@ -1,0 +1,5 @@
+[
+    {"value": "call", "label": "Llamada"},
+    {"value": "visit", "label": "Visita"},
+    {"value": "update", "label": "Actualizacion"}
+]

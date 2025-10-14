@@ -73,8 +73,11 @@ class CaseListResponse(BaseModel):
 
 class CaseSummary(BaseModel):
     total_cases: int
+    new_cases: int
+    in_progress_cases: int
     resolved_cases: int
-    pending_cases: int
+    cancelled_cases: int
+    archived_cases: int
     average_response_hours: Optional[float]
 
 

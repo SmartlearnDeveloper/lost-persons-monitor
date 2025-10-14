@@ -50,6 +50,7 @@ SENSITIVE_TERMS: List[dict] = []
 SENSITIVE_INDEX: List[dict] = []
 SEVERITY_RANK = {"alta": 3, "media": 2, "baja": 1}
 PRIORITY_OPTIONS: List[dict] = []
+CASE_ACTION_TYPES: List[dict] = []
 
 
 def _load_sensitive_terms() -> None:
@@ -106,6 +107,31 @@ def _load_priority_options() -> None:
 _load_priority_options()
 
 
+def _load_action_types() -> None:
+    global CASE_ACTION_TYPES
+    try:
+        config_path = Path(__file__).resolve().parent.parent / "config" / "case_action_types.json"
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        CASE_ACTION_TYPES = [
+            {
+                "value": (entry.get("value") or "").strip() or "update",
+                "label": (entry.get("label") or "").strip() or entry.get("value", "").strip() or "Actualizacion",
+            }
+            for entry in data
+            if entry.get("value")
+        ]
+    except FileNotFoundError:
+        CASE_ACTION_TYPES = [
+            {"value": "call", "label": "Llamada"},
+            {"value": "visit", "label": "Visita"},
+            {"value": "update", "label": "Actualizacion"},
+        ]
+
+
+_load_action_types()
+
+
 def _case_manager_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
     url = f"{CASE_MANAGER_URL}{path}"
     try:
@@ -136,6 +162,7 @@ def _template_context(request: Request, **kwargs) -> dict:
         "brand_copyright": _copyright_notice(),
         "case_manager_url": CASE_MANAGER_URL,
         "priority_options": PRIORITY_OPTIONS,
+        "action_types": CASE_ACTION_TYPES,
         "case_status_values": CASE_STATUS_VALUES,
     }
     base.update(kwargs)
@@ -2456,14 +2483,15 @@ def _case_summary_stats(db: Session) -> dict:
     if data:
         return data
     # fallback local computation
-    total_cases = db.query(func.count(Case.case_id)).scalar() or 0
-    resolved_cases = db.query(func.count(Case.case_id)).filter(Case.status == CaseStatusEnum.RESOLVED).scalar() or 0
-    pending_cases = (
-        db.query(func.count(Case.case_id))
-        .filter(Case.status.in_([CaseStatusEnum.NEW, CaseStatusEnum.IN_PROGRESS]))
-        .scalar()
-        or 0
+    counts = dict(
+        db.query(Case.status, func.count(Case.case_id)).group_by(Case.status).all()
     )
+    new_cases = int(counts.get(CaseStatusEnum.NEW, 0))
+    in_progress_cases = int(counts.get(CaseStatusEnum.IN_PROGRESS, 0))
+    resolved_cases = int(counts.get(CaseStatusEnum.RESOLVED, 0))
+    cancelled_cases = int(counts.get(CaseStatusEnum.CANCELLED, 0))
+    archived_cases = int(counts.get(CaseStatusEnum.ARCHIVED, 0))
+    total_cases = new_cases + in_progress_cases + resolved_cases + cancelled_cases + archived_cases
     avg_seconds = (
         db.query(
             func.avg(
@@ -2477,8 +2505,11 @@ def _case_summary_stats(db: Session) -> dict:
     avg_hours = round(float(avg_seconds) / 3600, 2) if avg_seconds else None
     return {
         "total_cases": total_cases,
+        "new_cases": new_cases,
+        "in_progress_cases": in_progress_cases,
         "resolved_cases": resolved_cases,
-        "pending_cases": pending_cases,
+        "cancelled_cases": cancelled_cases,
+        "archived_cases": archived_cases,
         "average_response_hours": avg_hours,
     }
 
