@@ -347,6 +347,10 @@
         });
 
         async function loadActions(caseId) {
+            if (!caseId) {
+                actionsList.innerHTML = '<div class="text-muted">Selecciona un caso para ver su historial.</div>';
+                return;
+            }
             try {
                 const data = await fetchJson(`${CASE_MANAGER_URL}/cases/${caseId}/actions`);
                 if (!data.length) {
