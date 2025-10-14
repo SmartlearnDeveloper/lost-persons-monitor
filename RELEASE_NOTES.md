@@ -1,3 +1,26 @@
+# version_1_1_0
+
+## Highlights
+
+- Introduces the `case_manager` FastAPI service with full CRUD, action timelines, and KPI endpoints used by the dashboard.
+- Adds a web Case Management UI at `/cases` to create/update cases, log actions via configurable selectors, and prevent duplicate assignments.
+- Expands dashboard KPIs (new/in-progress/resolved/cancelled/archived, average response time) and totals in demographic/hourly tables.
+- Publishes configurable catalogs: priorities (`config/case_priorities.json`) and action types (`config/case_action_types.json`).
+- Applies consistent branding across dashboards and reports, and captures the new schema in `scripts/db_init.py`.
+
+## Verification Checklist
+
+- `python scripts/db_init.py`
+- `pip install -r producer/requirements.txt`
+- `pip install -r dashboard/requirements.txt`
+- `pip install -r case_manager/requirements.txt`
+- `uvicorn producer.main:app --reload --host 0.0.0.0 --port 58101`
+- `uvicorn dashboard.main:app --reload --host 0.0.0.0 --port 58102`
+- `uvicorn case_manager.main:app --reload --host 0.0.0.0 --port 58103`
+- `curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:18084/connectors/ -d @debezium-connector.json`
+- In `/cases`, create a sample case, add actions, and confirm KPIs and time series update on `/dashboard`.
+- Generate PDF reports (operational, demographic, geographic, hourly, executive, sensitive) to ensure totals/branding render.
+
 # version_1_0_0
 
 ## Highlights
