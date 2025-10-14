@@ -37,8 +37,13 @@
                             <select id="personSelect" class="form-select" required></select>
                         </div>
                         <div class="col-12">
-                            <label class="form-label" for="priorityInput">Prioridad</label>
-                            <input id="priorityInput" class="form-control" placeholder="Ej. Alta, Media" />
+                            <label class="form-label" for="prioritySelect">Prioridad</label>
+                            <select id="prioritySelect" class="form-select">
+                                <option value="">Sin prioridad</option>
+                                {% for option in priority_options %}
+                                <option value="{{ option.value }}">{{ option.label }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <div class="col-12">
                             <div class="form-check">
@@ -86,8 +91,13 @@
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label" for="updatePriority">Prioridad</label>
-                            <input id="updatePriority" class="form-control" />
+                            <label class="form-label" for="updatePrioritySelect">Prioridad</label>
+                            <select id="updatePrioritySelect" class="form-select">
+                                <option value="">Sin prioridad</option>
+                                {% for option in priority_options %}
+                                <option value="{{ option.value }}">{{ option.label }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label" for="resolvedAt">Fecha de resolución</label>
@@ -136,21 +146,56 @@
             archived: 'Archivado'
         };
 
+        const priorityOptions = [
+            { value: '', label: 'Sin prioridad' },
+            {% for option in priority_options %}
+            { value: '{{ option.value }}', label: '{{ option.label }}' },
+            {% endfor %}
+        ];
+
         const alertBox = document.getElementById('casesAlert');
         const casesTableBody = document.querySelector('#casesTable tbody');
         const createForm = document.getElementById('createCaseForm');
         const personSelect = document.getElementById('personSelect');
+        const prioritySelect = document.getElementById('prioritySelect');
         const flagPriority = document.getElementById('flagPriority');
         const updateForm = document.getElementById('updateCaseForm');
         const caseIdField = document.getElementById('caseIdField');
         const statusSelect = document.getElementById('statusSelect');
-        const updatePriority = document.getElementById('updatePriority');
+        const updatePrioritySelect = document.getElementById('updatePrioritySelect');
         const resolvedAt = document.getElementById('resolvedAt');
         const updateFlagPriority = document.getElementById('updateFlagPriority');
         const resolutionSummary = document.getElementById('resolutionSummary');
         const resetSelection = document.getElementById('resetSelection');
         const addActionBtn = document.getElementById('addActionBtn');
         const actionsList = document.getElementById('actionsList');
+
+        const personLabels = new Map();
+
+        function populatePrioritySelect(selectElement, selectedValue = '') {
+            selectElement.innerHTML = '';
+            let hasSelected = false;
+            priorityOptions.forEach((option) => {
+                const opt = document.createElement('option');
+                opt.value = option.value;
+                opt.textContent = option.label;
+                if (option.value === selectedValue) {
+                    opt.selected = true;
+                    hasSelected = true;
+                }
+                selectElement.appendChild(opt);
+            });
+            if (selectedValue && !hasSelected) {
+                const extra = document.createElement('option');
+                extra.value = selectedValue;
+                extra.textContent = selectedValue;
+                extra.selected = true;
+                selectElement.appendChild(extra);
+            }
+        }
+
+        populatePrioritySelect(prioritySelect);
+        populatePrioritySelect(updatePrioritySelect);
 
         function showAlert(message, variant = 'info') {
             alertBox.textContent = message;
@@ -186,14 +231,21 @@
             return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
         }
 
-        async function loadPersons() {
-            const data = await fetchJson('/persons/options');
+        async function refreshPersonData() {
+            const [available, all] = await Promise.all([
+                fetchJson('/persons/options'),
+                fetchJson('/persons/options?include_assigned=true'),
+            ]);
             personSelect.innerHTML = '<option value="" disabled selected>Selecciona una persona...</option>';
-            data.items.forEach((item) => {
+            available.items.forEach((item) => {
                 const option = document.createElement('option');
                 option.value = item.person_id;
                 option.textContent = item.label;
                 personSelect.appendChild(option);
+            });
+            personLabels.clear();
+            all.items.forEach((item) => {
+                personLabels.set(String(item.person_id), item.label);
             });
         }
 
@@ -202,11 +254,12 @@
             items.forEach((item) => {
                 const row = document.createElement('tr');
                 row.dataset.caseId = item.case_id;
+                const label = personLabels.get(String(item.person_id)) || `#${item.person_id}`;
                 row.innerHTML = `
                     <td>#${item.case_id}</td>
-                    <td>${item.person_id}</td>
+                    <td>${label}</td>
                     <td><span class="badge bg-secondary badge-status">${statusLabels[item.status] || item.status}</span></td>
-                    <td>${item.priority || '-'}</td>
+                    <td>${priorityOptions.find((opt) => opt.value === item.priority)?.label || '-'}</td>
                     <td>${item.resolved_at ? formatDate(item.resolved_at) : '-'}</td>
                     <td>
                         <button class="btn btn-sm btn-outline-primary me-1" data-action="edit">Editar</button>
@@ -225,7 +278,7 @@
         function resetSelectionForm() {
             caseIdField.value = '';
             statusSelect.value = 'new';
-            updatePriority.value = '';
+            populatePrioritySelect(updatePrioritySelect, '');
             resolvedAt.value = '';
             updateFlagPriority.checked = false;
             resolutionSummary.value = '';
@@ -245,7 +298,7 @@
                     const caseData = await fetchJson(`${CASE_MANAGER_URL}/cases/${caseId}`);
                     caseIdField.value = caseData.case_id;
                     statusSelect.value = caseData.status;
-                    updatePriority.value = caseData.priority || '';
+                    populatePrioritySelect(updatePrioritySelect, caseData.priority || '');
                     resolvedAt.value = formatDateInput(caseData.resolved_at);
                     updateFlagPriority.checked = caseData.is_priority || false;
                     resolutionSummary.value = caseData.resolution_summary || '';
@@ -301,14 +354,15 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         person_id: personId,
-                        priority: document.getElementById('priorityInput').value || null,
+                        priority: prioritySelect.value || null,
                         is_priority: flagPriority.checked,
                         status: 'new'
                     })
                 });
                 showAlert('Caso creado correctamente.', 'success');
                 createForm.reset();
-                await loadCases();
+                populatePrioritySelect(prioritySelect);
+                await Promise.all([loadCases(), refreshPersonData()]);
             } catch (error) {
                 showAlert(error.message || 'No fue posible crear el caso.', 'danger');
             }
@@ -328,7 +382,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         status: statusSelect.value,
-                        priority: updatePriority.value || null,
+                        priority: updatePrioritySelect.value || null,
                         resolved_at: resolvedAt.value ? new Date(resolvedAt.value).toISOString() : null,
                         resolution_summary: resolutionSummary.value || null,
                         is_priority: updateFlagPriority.checked
@@ -369,7 +423,7 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             try {
-                await loadPersons();
+                await refreshPersonData();
                 await loadCases();
                 resetSelectionForm();
             } catch (error) {

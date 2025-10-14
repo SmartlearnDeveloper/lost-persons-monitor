@@ -49,6 +49,7 @@ CASE_STATUS_VALUES = [status.value for status in CaseStatusEnum]
 SENSITIVE_TERMS: List[dict] = []
 SENSITIVE_INDEX: List[dict] = []
 SEVERITY_RANK = {"alta": 3, "media": 2, "baja": 1}
+PRIORITY_OPTIONS: List[dict] = []
 
 
 def _load_sensitive_terms() -> None:
@@ -80,6 +81,31 @@ def _load_sensitive_terms() -> None:
 _load_sensitive_terms()
 
 
+def _load_priority_options() -> None:
+    global PRIORITY_OPTIONS
+    try:
+        config_path = Path(__file__).resolve().parent.parent / "config" / "case_priorities.json"
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        PRIORITY_OPTIONS = [
+            {
+                "value": (entry.get("value") or "").strip() or "medium",
+                "label": (entry.get("label") or "").strip() or entry.get("value", "").strip() or "Media",
+            }
+            for entry in data
+            if entry.get("value")
+        ]
+    except FileNotFoundError:
+        PRIORITY_OPTIONS = [
+            {"value": "high", "label": "Alta"},
+            {"value": "medium", "label": "Media"},
+            {"value": "low", "label": "Baja"},
+        ]
+
+
+_load_priority_options()
+
+
 def _case_manager_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
     url = f"{CASE_MANAGER_URL}{path}"
     try:
@@ -109,6 +135,7 @@ def _template_context(request: Request, **kwargs) -> dict:
         "brand_report_footer": BRAND_REPORT_FOOTER,
         "brand_copyright": _copyright_notice(),
         "case_manager_url": CASE_MANAGER_URL,
+        "priority_options": PRIORITY_OPTIONS,
         "case_status_values": CASE_STATUS_VALUES,
     }
     base.update(kwargs)
@@ -2457,7 +2484,8 @@ def _case_summary_stats(db: Session) -> dict:
 
 
 def _case_time_series(db: Session, days: int) -> list[dict]:
-    data = _case_manager_get("/cases/stats/time-series", params={"range": f"{days}d" if days != 1 else "24h"})
+    range_param = "24h" if days == 1 else "7d" if days == 7 else "30d"
+    data = _case_manager_get("/cases/stats/time-series", params={"range": range_param})
     if data and "points" in data:
         return data["points"]
     # fallback computation
@@ -2508,11 +2536,12 @@ def case_time_series(range: str = Query("7d", pattern="^(24h|7d|30d)$"), db: Ses
 
 
 @app.get("/persons/options")
-def person_options(db: Session = Depends(get_db)):
+def person_options(include_assigned: bool = Query(False), db: Session = Depends(get_db)):
+    query = db.query(PersonLost.person_id, PersonLost.first_name, PersonLost.last_name)
+    if not include_assigned:
+        query = query.filter(PersonLost.case == None)
     items = (
-        db.query(PersonLost.person_id, PersonLost.first_name, PersonLost.last_name)
-        .order_by(PersonLost.last_name.asc(), PersonLost.first_name.asc())
-        .all()
+        query.order_by(PersonLost.last_name.asc(), PersonLost.first_name.asc()).all()
     )
     data = [
         {
