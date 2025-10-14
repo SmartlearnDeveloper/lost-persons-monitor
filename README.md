@@ -24,6 +24,7 @@ Lost Persons Monitor is a change-data-capture (CDC) pipeline that ingests lost-p
 - `http://localhost:58102/report` — simple GUI to generate random missing-person entries and post them to the producer API.
 - `http://localhost:58102/dashboard` — real-time charts plus tabular summaries driven by Debezium/Flink aggregates, with direct SQL fallbacks when aggregates are empty.
 - `http://localhost:58102/reports` — catalog of downloadable PDF reports with filterable inputs.
+- `http://localhost:58102/cases` — UI para crear/actualizar casos, registrar acciones y monitorear KPIs operativos.
 
 The reporter UI issues `POST` requests to `http://localhost:58101/report_person/` (the producer service). A “Generar aleatorio” button pre-fills sample data so dispatch teams can simulate activity rapidly.
 
