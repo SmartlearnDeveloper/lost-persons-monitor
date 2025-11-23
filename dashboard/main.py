@@ -2072,46 +2072,126 @@ async def admin_users_page(request: Request):
     )
 
 
-@app.get("/admin/api/users/{username}")
-def admin_read_user(
-    username: str,
-    request: Request,
-    _: TokenPayload = Depends(require_admin_permission),
-):
+@app.get("/admin/users/create", response_class=HTMLResponse)
+async def admin_create_user_form(request: Request):
+    current_user = _ensure_ui_permissions(request, ["manage_users"])
+    if not current_user:
+        return _login_redirect(request)
+    return templates.TemplateResponse(
+        "admin_user_form.html",
+        _template_context(
+            request,
+            user=None,
+            form_mode="create",
+            title="Crear nuevo usuario",
+            subtitle="Completa los campos requeridos",
+            submit_label="Crear",
+        ),
+    )
+
+
+@app.post("/admin/users/create", response_class=HTMLResponse)
+async def admin_create_user_submit(request: Request):
+    current_user = _ensure_ui_permissions(request, ["manage_users"])
+    if not current_user:
+        return _login_redirect(request)
+    form = await request.form()
+    roles = form.getlist("roles") or ["member"]
+    payload = {
+        "username": form.get("username"),
+        "full_name": form.get("full_name"),
+        "email": form.get("email"),
+        "password": form.get("password"),
+        "roles": roles,
+    }
     token = _proxy_auth_header(request)
-    return _auth_service_request("GET", f"/auth/users/{username}", token=token)
+    try:
+        _auth_service_request("POST", "/auth/register", token=token, payload=payload)
+        return RedirectResponse(url="/admin/users", status_code=303)
+    except HTTPException as exc:
+        return templates.TemplateResponse(
+            "admin_user_form.html",
+            _template_context(
+                request,
+                user=payload,
+                form_mode="create",
+                title="Crear nuevo usuario",
+                subtitle="Completa los campos requeridos",
+                submit_label="Crear",
+                error_message=exc.detail,
+            ),
+            status_code=exc.status_code,
+        )
 
 
-@app.post("/admin/api/users")
-async def admin_create_user(
-    request: Request,
-    _: TokenPayload = Depends(require_admin_permission),
-):
-    payload = await request.json()
+@app.get("/admin/users/{username}/edit", response_class=HTMLResponse)
+async def admin_edit_user_form(username: str, request: Request):
+    current_user = _ensure_ui_permissions(request, ["manage_users"])
+    if not current_user:
+        return _login_redirect(request)
     token = _proxy_auth_header(request)
-    return _auth_service_request("POST", "/auth/register", token=token, payload=payload)
+    user = _auth_service_request("GET", f"/auth/users/{username}", token=token)
+    return templates.TemplateResponse(
+        "admin_user_form.html",
+        _template_context(
+            request,
+            user=user,
+            form_mode="edit",
+            title=f"Editar usuario {username}",
+            subtitle="Actualiza los datos necesarios",
+            submit_label="Guardar",
+        ),
+    )
 
 
-@app.patch("/admin/api/users/{username}")
-async def admin_update_user(
-    username: str,
-    request: Request,
-    _: TokenPayload = Depends(require_admin_permission),
-):
-    payload = await request.json()
+@app.post("/admin/users/{username}/edit", response_class=HTMLResponse)
+async def admin_edit_user_submit(username: str, request: Request):
+    current_user = _ensure_ui_permissions(request, ["manage_users"])
+    if not current_user:
+        return _login_redirect(request)
+    form = await request.form()
+    roles = form.getlist("roles") or None
+    payload = {
+        "full_name": form.get("full_name"),
+        "email": form.get("email"),
+        "is_active": form.get("is_active") == "on",
+    }
+    password = form.get("password")
+    if password:
+        payload["password"] = password
+    if roles is not None:
+        payload["roles"] = roles or ["member"]
     token = _proxy_auth_header(request)
-    return _auth_service_request("PATCH", f"/auth/users/{username}", token=token, payload=payload)
+    try:
+        _auth_service_request("PATCH", f"/auth/users/{username}", token=token, payload=payload)
+        return RedirectResponse(url="/admin/users", status_code=303)
+    except HTTPException as exc:
+        current_data = _auth_service_request("GET", f"/auth/users/{username}", token=token)
+        return templates.TemplateResponse(
+            "admin_user_form.html",
+            _template_context(
+                request,
+                user=current_data,
+                form_mode="edit",
+                title=f"Editar usuario {username}",
+                subtitle="Actualiza los datos necesarios",
+                submit_label="Guardar",
+                error_message=exc.detail,
+            ),
+            status_code=exc.status_code,
+        )
 
 
-@app.delete("/admin/api/users/{username}")
-def admin_delete_user(
-    username: str,
-    request: Request,
-    _: TokenPayload = Depends(require_admin_permission),
-):
+@app.post("/admin/users/{username}/delete")
+async def admin_user_toggle(username: str, request: Request):
+    current_user = _ensure_ui_permissions(request, ["manage_users"])
+    if not current_user:
+        return _login_redirect(request)
     token = _proxy_auth_header(request)
-    _auth_service_request("DELETE", f"/auth/users/{username}", token=token)
-    return {"status": "ok"}
+    user = _auth_service_request("GET", f"/auth/users/{username}", token=token)
+    payload = {"is_active": not user.get("is_active", True)}
+    _auth_service_request("PATCH", f"/auth/users/{username}", token=token, payload=payload)
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 @app.get("/cases/{case_id}/report")
