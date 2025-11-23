@@ -2,6 +2,8 @@
 
 Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdidas, los replica mediante Debezium/Kafka, genera agregados con Flink y expone dashboards y reportes PDF para equipos de respuesta. Cada reporte crea un caso, registra responsables y acciones y actualiza indicadores en tiempo real.
 
+> Versión estable actual: **version_2_1_0**
+
 ## Guía rápida
 
 1. **Requisitos**: Python 3.11+, Docker y Docker Compose.
@@ -52,6 +54,20 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
 | API del case manager               | `http://localhost:40150/docs`               |
 | Kafka Connect                      | `http://localhost:40125/connectors/`        |
 
+## Puertos expuestos
+
+| Servicio/Contenedor   | Puerto interno | Puerto host (por defecto) |
+|-----------------------|----------------|---------------------------|
+| MySQL (`mysql_db`)    | 3306           | 40110                     |
+| Zookeeper             | 2181           | 40115                     |
+| Kafka                 | 9092           | 40120                     |
+| Kafka Connect         | 8083           | 40125                     |
+| Flink JobManager      | 8081           | 40130                     |
+| Flink TaskManager     | 6123           | 40135                     |
+| Producer API          | 58101          | 40140                     |
+| Dashboard             | 58102          | 40145                     |
+| Case Manager          | 58103          | 40150                     |
+| Auth Service          | 58104          | 40155                     |
 ## Autenticación y roles
 
 - `auth_service` expone `/auth/login`, `/auth/register`, `/auth/self-register`, `/auth/users/*` y `/auth/permissions`. Usa el mismo MySQL para guardar usuarios, roles y permisos.
