@@ -1,95 +1,92 @@
 # Lost Persons Monitor
 
-Lost Persons Monitor is a change-data-capture (CDC) platform that ingests lost-person reports, streams database changes through Kafka, computes aggregates with Apache Flink, and surfaces an operational dashboard plus PDF intelligence for responders. Each report automatically creates a case, tracks responsible agents over time, and updates KPIs in real time through WebSockets.
+Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdidas, los replica mediante Debezium/Kafka, genera agregados con Flink y expone dashboards y reportes PDF para equipos de respuesta. Cada reporte crea un caso, registra responsables y acciones y actualiza indicadores en tiempo real.
 
-## Quick Start
+## Guía rápida
 
-1. **Install prerequisites** – Python 3.11+, Docker, and Docker Compose.
-2. **Update/build images** – the producer image bundles `scripts/db_init.py`, so rebuild it whenever schemas change:
+1. **Requisitos**: Python 3.11+, Docker y Docker Compose.
+2. **Reconstruir producer** (si cambió `scripts/db_init.py`):
    ```bash
    docker compose build producer
    ```
-3. **Reset the schema (optional but recommended)** – drops/recreates `lost_persons_db`, seeds contacts, and prints the resulting tables so you can confirm `case_responsible_history` and `responsible_contacts` exist:
+3. **Reiniciar la base** (opcional, recomendado antes de demos):
    ```bash
    ./scripts/reset_db.sh
    ```
-4. **Compile the Flink job** – run this every time streaming logic changes:
+   Este script levanta MySQL, elimina y crea `lost_persons_db`, y al final ejecuta `SHOW TABLES FROM lost_persons_db` para confirmar que existen `case_responsible_history`, `responsible_contacts`, etc.
+4. **Compilar Flink**:
    ```bash
    mvn -f flink-job/pom.xml clean package
    ```
-5. **Launch the stack** – spins up MySQL, Zookeeper, Kafka, Kafka Connect, Flink, producer, dashboard, case manager, etc.:
+5. **Levantar la pila completa**:
    ```bash
    docker compose up -d --build
    ```
-6. **Register Debezium (if needed)** – `connector_init` tries automatically, but if logs show `curl: (7)` rerun:
+6. **Verificar Debezium** (si `connector_init` falló con `curl: (7)`):
    ```bash
    docker compose run --rm connector_init
    ```
-7. **Verify Flink** – ensure the job is running:
+7. **Comprobar servicios**:
    ```bash
    docker compose exec jobmanager /opt/flink/bin/flink list
+   docker compose exec connect curl -s http://localhost:8083/connectors/lost-persons-connector/status
    ```
-8. **Optional local dev** – start individual APIs with uvicorn (e.g., `uvicorn producer.main:app --reload --port 58101`) and register the connector manually via `curl localhost:40125/connectors/`.
+8. **Modo local opcional**: levanta un servicio puntual con `uvicorn` y registra el conector manualmente (`curl localhost:40125/connectors/`).
 
-## Service & UI Map
+## URLs principales
 
-| Service (container)        | Host Port | UI / Endpoint examples                                     |
-|----------------------------|-----------|-------------------------------------------------------------|
-| Producer (`producer_service`)   | 40140     | `http://localhost:40140/docs`, `/report_person/`             |
-| Dashboard (`dashboard_service`) | 40145     | `/` landing page, `/report`, `/dashboard`, `/cases`, `/reports` |
-| Case Manager (`case_manager_service`) | 40150     | `http://localhost:40150/docs` (FastAPI swagger)            |
-| Kafka Connect              | 40125     | `http://localhost:40125/connectors/`                        |
-| Flink JobManager           | 40130     | `http://localhost:40130/#/job/running`                      |
+| Servicio / UI                      | URL                                        |
+|------------------------------------|---------------------------------------------|
+| Reporte de personas perdidas       | `http://localhost:40145/report`             |
+| Dashboard en tiempo real           | `http://localhost:40145/dashboard`          |
+| Gestión de casos + PDF             | `http://localhost:40145/cases`              |
+| Catálogo de reportes PDF           | `http://localhost:40145/reports`            |
+| API del producer                   | `http://localhost:40140/docs`               |
+| API del case manager               | `http://localhost:40150/docs`               |
+| Kafka Connect                      | `http://localhost:40125/connectors/`        |
 
-UI highlights:
-- `/report`: submit reports (or auto-generate sample payloads) – every entry now creates a case and immediate responsible timeline.
-- `/dashboard`: KPIs and charts refresh via WebSockets as soon as Debezium → Flink → MySQL writes new aggregates (age, gender, hourly).
-- `/cases`: edit status, assign responsibles, log actions, download case PDFs (historial de responsables + acciones).
-- `/reports`: generate PDF reports (alertas operativas, distribucción demográfica, análisis horario, casos sensibles, etc.).
+## Flujo de datos
 
-## Real-Time Data Path
+1. El `producer` valida el payload, calcula edad y marca `lost_timestamp` usando `REPORT_LOCAL_TZ` (por defecto `America/Guayaquil`).
+2. Debezium (configurado con `poll.interval.ms=500` y `max.batch.size=256`) lee los binlogs y publica en `lost_persons_server.*`.
+3. Flink (`FLINK_LOCAL_TIMEZONE`) agrupa por edad, género y hora y guarda los resultados en MySQL (`agg_age_group`, `agg_gender`, `agg_hourly`).
+4. El case manager expone `/case-stats/*`, `/cases/{id}/actions`, `/cases/{id}/responsibles` y notifica al dashboard vía `/internal/refresh` después de cualquier cambio.
+5. El dashboard consume los agregados (SQL o WebSocket) y actualiza tarjetas, gráficas, historial de acciones y responsables en tiempo real; los reportes PDF incluyen ambos historiales.
 
-1. Producer validates payloads, normalizes timestamps using `REPORT_LOCAL_TZ`, and inserts into `persons_lost` plus `case_cases`.
-2. Debezium reads MySQL binlogs (`poll.interval.ms=500`, `max.batch.size=256`) and emits JSON events to Kafka topics `lost_persons_server.*`.
-3. Flink (`FLINK_LOCAL_TIMEZONE` configurable) consumes the topic, computes aggregates, and writes `agg_age_group`, `agg_gender`, `agg_hourly`.
-4. Case Manager notifies the dashboard (via `/internal/refresh`) whenever cases, actions, or responsible assignments change so KPIs update instantly even without new CDC events.
-5. Dashboard listeners (Kafka + WebSocket clients) trigger `refreshDashboard()` to update charts, KPIs, and tables without manual reloads.
+## Variables de entorno clave
 
-## Environment Variables
+- `REPORT_LOCAL_TZ`: zona horaria usada por el producer.
+- `FLINK_LOCAL_TIMEZONE`: zona horaria para las funciones de fecha/hora en Flink.
+- `CASE_MANAGER_URL` / `CASE_MANAGER_PUBLIC_URL`: endpoints interno y expuesto para el dashboard.
+- `DASHBOARD_REFRESH_URL`: ruta interna (`http://dashboard:58102/internal/refresh`) que el case manager invoca tras cada cambio.
 
-- `REPORT_LOCAL_TZ` – producer timezone (default `America/Guayaquil`).
-- `FLINK_LOCAL_TIMEZONE` – Flink local timezone for `TO_TIMESTAMP_LTZ`.
-- `CASE_MANAGER_URL` / `CASE_MANAGER_PUBLIC_URL` – internal vs. browser-facing URLs used by dashboard.
-- `DASHBOARD_REFRESH_URL` – internal endpoint (`http://dashboard:58102/internal/refresh`) hit by case manager after mutations.
+## Validación tras despliegue
 
-## Validation Checklist
+1. `docker compose ps` → todos los contenedores deben estar “Up”.
+2. `SHOW TABLES FROM lost_persons_db` → verifica que existan `case_responsible_history`, `responsible_contacts` y `case_actions` con `responsible_name`.
+3. Envía un reporte desde `/report`, asigna un responsable en `/cases`, registra una acción y descarga el PDF para confirmar que Prioridad (Alta/Media/Baja) y el responsable aparecen en español.
+4. Observa `/dashboard`: los KPIs y gráficas deberían reaccionar sin recargar.
 
-1. **Services up** – `docker compose ps` should show every container `Up`.
-2. **Connector RUNNING** – `docker compose exec connect curl -s http://localhost:8083/connectors/lost-persons-connector/status`.
-3. **Flink job RUNNING** – `docker compose exec jobmanager /opt/flink/bin/flink list`.
-4. **UI sanity** – open `http://localhost:40145/dashboard` and `http://localhost:40145/cases`, submit a report, assign a responsable, log an action, and verify charts/ tables update immediately.
-5. **PDF check** – from `/cases`, click “Reporte” to ensure the PDF lists Prioridad en español, historial de responsables y acciones con el responsable correcto.
+## Estructura del repo
 
-## Repository Structure
+- `producer/`: API de entrada, crea personas y casos.
+- `case_manager/`: control de casos, acciones, responsables y KPIs.
+- `dashboard/`: Jinja + API para dashboard, formularios y reportes PDF.
+- `flink/`, `flink-job/`: job de streaming (SQL/Java) que alimenta las tablas agregadas.
+- `scripts/`: herramientas (`db_init.py`, `reset_db.sh`, `stack_check.py`).
+- `config/`: plantillas (`config.json`, `debezium-connector.json`, prioridades, etc.).
 
-- `producer/` – REST API for submissions (FastAPI + SQLAlchemy).
-- `dashboard/` – public dashboard, report forms, PDF generators.
-- `case_manager/` – case CRUD, KPI endpoints, responsible and action timelines.
-- `flink/` & `flink-job/` – streaming job sources, sinks, connectors.
-- `scripts/` – database bootstrap (`db_init.py`), reset helpers, health checks.
-- `config/` – shared configuration (DB creds, Debezium connector, case priorities, etc.).
+## Pruebas
 
-## Testing
+- Usa `pytest` con `fastapi.TestClient` en los servicios FastAPI (productor, dashboard, case_manager).
+- Mockea la base con SQLite o Sessions en memoria para evitar dependencias externas.
+- Incluye pasos manuales (por ejemplo, generar un PDF y comprobar encabezados) en la descripción de cada PR.
 
-- Producer & dashboard: `pytest` suites under `tests/producer`, `tests/dashboard` (use FastAPI `TestClient` + SQLAlchemy fixtures).
-- Scripts: dry-run logic around `db_init.py`, `stack_check.py` (mock engines/config).
-- Manual flows: submit a report, verify Kafka events, confirm aggregates in MySQL, and download case PDFs.
+## Problemas frecuentes
 
-## Troubleshooting
+- **Conector Debezium no registrado**: reejecuta `docker compose run --rm connector_init` y valida con `curl http://localhost:40125/connectors/`.
+- **Error “Unknown column…”**: reconstruye la imagen del producer (`docker compose build producer`) y corre `./scripts/reset_db.sh` para crear las columnas/ tablas nuevas.
+- **Dashboard muestra “NetworkError”**: revisa `docker compose logs dashboard case_manager`; usualmente indica que falta una migración de base o que el case manager no puede alcanzar MySQL.
+- **Gráficas no se actualizan**: confirma que el job de Flink está “RUNNING” y que el conector Debezium sigue en `state: RUNNING`.
 
-- **Debezium not registered** – rerun `docker compose run --rm connector_init` after Kafka Connect is healthy.
-- **Missing tables** – rebuild producer image (`docker compose build producer`) and re-run `./scripts/reset_db.sh` (script now prints table list).
-- **Dashboard “NetworkError”** – check `docker compose logs dashboard` & `case_manager` for 500s; ensure schema includes `case_responsible_history`, `responsible_contacts`, and `case_actions.responsible_name`.
-- **Charts lag** – confirm connector status; `poll.interval.ms=500` should keep latency < 1s. Use `/case-responsibles/catalog` and `/cases/{id}/responsibles` to ensure responsibles endpoints are reachable.
-
-Refer to `AGENTS.md` files in each module for service-specific conventions and contribution guidelines.
+Consulta los `AGENTS.md` de cada subdirectorio para lineamientos específicos (por ejemplo, cómo ejecutar pruebas del dashboard o empaquetar el job de Flink).

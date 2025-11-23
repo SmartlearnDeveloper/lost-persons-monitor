@@ -1,15 +1,15 @@
-# Scripts Guidelines
+# Lineamientos de Scripts
 
-## Overview
-- `scripts/db_init.py`: define/crea tablas (`case_responsible_history`, `responsible_contacts`, `case_actions.responsible_name`, etc.).
-- `scripts/reset_db.sh`: arranca MySQL, recrea el esquema y muestra `SHOW TABLES` para confirmar migraciones.
-- `scripts/stack_check.py`: sanidad de servicios (Producer, Dashboard, Case Manager, Kafka Connect).
+## Descripción
+- `scripts/db_init.py` define todas las tablas (personas, casos, acciones, historial de responsables, contactos) y las crea/seed.
+- `scripts/reset_db.sh` levanta MySQL, recrea la base y muestra `SHOW TABLES` al terminar.
+- `scripts/stack_check.py` valida que producer, case manager, dashboard y Kafka Connect estén accesibles.
 
-## Usage
-- `python scripts/db_init.py --reset` (cuando corras fuera de contenedores).
-- `./scripts/reset_db.sh` (usado normalmente dentro de la pila Docker): ejecuta `db_init.py` en el contenedor del producer.
-- Añade nuevos scripts en Python siempre que sea posible para mantener compatibilidad cross-platform.
+## Uso
+- `python scripts/db_init.py --reset` (en entornos fuera de Docker).
+- `./scripts/reset_db.sh` (usa el contenedor del producer para ejecutar `db_init.py`).
+- `python scripts/stack_check.py` después de `docker compose up -d --build` para verificar servicios.
 
-## Notes
-- Cada cambio en `db_init.py` implica reconstruir la imagen del producer: `docker compose build producer`.
-- Documenta cualquier operación destructiva con banderas `--force`/`--dry-run`.
+## Recomendaciones
+- Cada cambio a `db_init.py` requiere `docker compose build producer`.
+- Los scripts deben tener mensajes claros y, cuando destruyan datos, exigir confirmación o bandera explícita.

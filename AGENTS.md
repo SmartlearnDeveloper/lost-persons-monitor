@@ -1,39 +1,35 @@
-# Repository Guidelines
+# Lineamientos del Repositorio
 
-## Project Overview
-- Lost Persons Monitor es un pipeline CDC completo: el `producer` registra reportes de personas perdidas en MySQL, Debezium transmite los cambios a Kafka, Flink genera agregados en tiempo (casi) real y el `dashboard` expone métricas, dashboards y reportes PDF (incluyendo historial de responsables y acciones).
-- Desde `version_2_0_0`, toda la plataforma corre dentro de Docker Compose (`mysql`, `zookeeper`, `kafka`, `connect`, `flink_jobmanager`, `flink_taskmanager`, `producer_service`, `dashboard_service`, `case_manager_service`, `connector_init`).
-- Los casos se crean automáticamente con cada reporte y ahora incluyen seguimiento de responsables (`case_responsible_history`) y contactos disponibles (`responsible_contacts`).
+## Panorama general
+- Lost Persons Monitor es un pipeline CDC: el `producer` registra reportes en MySQL, Debezium los replica hacia Kafka, Flink calcula agregados y el `dashboard` muestra indicadores y reportes PDF en tiempo real.
+- Desde la `versión_2_0_0` todo corre en Docker Compose (`mysql`, `zookeeper`, `kafka`, `connect`, `flink_jobmanager`, `flink_taskmanager`, `producer_service`, `case_manager_service`, `dashboard_service`, `connector_init`).
+- Cada reporte crea un caso automáticamente, registra responsables y acciones, y actualiza los KPIs mediante WebSockets.
 
-## Estructura del Repositorio
-- `producer/`: FastAPI para recepción de reportes; crea personas, casos y dispara responsables/prioridades base.
-- `case_manager/`: API de casos, acciones, historial de responsables, KPIs y endpoints para PDF.
-- `dashboard/`: UI (Forms, Dashboard, Cases, Reports), WebSocket listener y generador de reportes PDF.
-- `flink/`, `flink-job/`: job SQL/Java que consume Kafka y escribe agregados `agg_*` en MySQL.
-- `scripts/`: `db_init.py`, `reset_db.sh`, `stack_check.py` y utilidades extras.
-- `config/`: plantillas (`config.json`, `debezium-connector.json`, prioridades, etc.).
+## Estructura
+- `producer/`: API FastAPI que persiste personas y casos.
+- `case_manager/`: CRUD de casos, acciones, historial de responsables y KPIs.
+- `dashboard/`: UI (formularios, dashboard, reportes PDF) y endpoints `/stats/*`.
+- `flink/` y `flink-job/`: job SQL/Java que consume Kafka y escribe `agg_*`.
+- `scripts/`: `db_init.py`, `reset_db.sh`, `stack_check.py` y utilidades varias.
+- `config/`: plantillas de configuración (`config.json`, `debezium-connector.json`, prioridades, etc.).
 
-## Comandos Clave
-1. `docker compose build producer` (cuando cambie `db_init.py`).
-2. `./scripts/reset_db.sh` – reinicia esquema, crea tablas nuevas y muestra `SHOW TABLES` al final.
-3. `mvn -f flink-job/pom.xml clean package` – recompila el job.
-4. `docker compose up -d --build` – levanta toda la pila.
-5. `docker compose run --rm connector_init` – re-registra Debezium si hiciera falta.
-6. Verificaciones:
+## Comandos básicos
+1. `docker compose build producer` (tras cambiar `scripts/db_init.py`).
+2. `./scripts/reset_db.sh` → reinicia MySQL, crea tablas y muestra `SHOW TABLES` al final.
+3. `mvn -f flink-job/pom.xml clean package` → recompila el job.
+4. `docker compose up -d --build` → levanta toda la pila.
+5. `docker compose run --rm connector_init` → re-registra Debezium si falló.
+6. Verificaciones rápidas:
    - `docker compose exec jobmanager /opt/flink/bin/flink list`
    - `docker compose exec connect curl -s http://localhost:8083/connectors/lost-persons-connector/status`
 
-## Estándares de Código y Tests
-- PEP 8 para Python, SQL/HTML bien formateado y modular.
-- Tests por servicio (`tests/producer`, `tests/dashboard`, etc.) usando `pytest` + `fastapi.TestClient`. Mockear MySQL vía SQLite/fixtures.
-- Documentar validaciones manuales (trazas WebSocket, screenshots, PDFs) en PRs.
+## Buenas prácticas
+- Sigue PEP 8, usa tipados y evita duplicar configuración; importa modelos desde `scripts/db_init.py`.
+- Documenta cambios visuales con capturas y pasos de prueba manual en cada PR.
+- Los tests deben cubrir flujos felices y de error (usa SQLite/mocks para no depender de MySQL real).
+- Antes de desplegar, confirma que las tablas nuevas existen (`case_responsible_history`, `responsible_contacts`, `case_actions.responsible_name`) ejecutando `reset_db.sh` o `SHOW TABLES`.
 
-## Seguridad y Operación
-- Variables sensibles fuera del repo (`config.json` sólo para local). `REPORT_LOCAL_TZ`, `FLINK_LOCAL_TIMEZONE`, `CASE_MANAGER_URL/PUBLIC_URL`, `DASHBOARD_REFRESH_URL` controlan comportamientos clave.
-- `reset_db.sh` y `stack_check.py` ayudan a mantener la integridad antes de demos.
-- Revisa logs (`docker compose logs <service>`) ante cualquier “NetworkError” e identifica si falta migrar tablas (`case_actions.responsible_name`, `case_responsible_history`, etc.).
-
-## Workflow de Contribución
-- Commits imperativos ≤72 caracteres (ej. `feat: assign and track case responsibles`).
-- PRs deben incluir cambios funcionales, pasos de despliegue/migración, evidencia (logs, screenshots, PDFs) y dependencias nuevas.
-- Coordina reinicios de la pila cuando se toque Flink o la base; la documentación en cada `AGENTS.md` de subcarpeta resume detalles específicos de cada servicio.
+## Flujo de contribución
+- Commits en imperativo (≤72 caracteres). Ejemplo: `feat: asignar responsables a casos`.
+- Los PR deben describir impacto funcional, pasos de despliegue/migración y evidencia (logs, PDFs, capturas).
+- Sincroniza cambios multiplataforma: si tocas Flink o Debezium, especifica los comandos necesarios (`docker compose build …`).

@@ -1,23 +1,27 @@
-# Dashboard Guidelines
+# Lineamientos del Dashboard
 
-## Overview
-- FastAPI app sirviendo HTML (Jinja) + API JSON.
-- Secciones principales: `/report`, `/dashboard`, `/cases`, `/reports`, `/case-responsibles/catalog`, `/case-stats/*`.
-- `http://localhost:40145` cuando corre en Docker Compose.
+## Descripción
+- Servicio FastAPI (`dashboard/main.py`) que entrega HTML (Jinja) y endpoints JSON.
+- Funcionalidades clave: formularios de reporte, dashboard operativo, gestión de casos (edición, responsables, acciones), reportes PDF.
+- Corre como `dashboard_service` en Docker Compose (`http://localhost:40145`).
 
-## Build & Run
-- `python -m venv .venv && source .venv/bin/activate`
-- `pip install -r dashboard/requirements.txt`
-- `uvicorn dashboard.main:app --reload --host 0.0.0.0 --port 58102`
-- En contenedor: `docker compose up -d dashboard`
+## Configuración y ejecución
+- Entorno local:
+  ```bash
+  python -m venv .venv && source .venv/bin/activate
+  pip install -r dashboard/requirements.txt
+  uvicorn dashboard.main:app --reload --host 0.0.0.0 --port 58102
+  ```
+- En contenedor: `docker compose up -d dashboard` (se recomienda `docker compose up -d --build` para tomar cambios).
+- Las plantillas Jinja se actualizan automáticamente en modo `--reload`; en Docker se debe reconstruir el servicio.
 
-## UI Features
-- Dashboard muestra KPIs + gráficas Chart.js con WebSockets.
-- `/cases` permite editar casos, asignar responsables (modal) y registrar acciones.
-- PDF de casos incluye “Historial de responsables” y “Historial de acciones” (con responsable capturado en el momento).
+## Interacciones principales
+- `/dashboard`: KPIs y gráficas (Chart.js) que se refrescan vía WebSockets cuando el case manager notifica o Flink actualiza agregados.
+- `/cases`: muestra la tabla “Personas reportadas perdidas”, permite editar estado/ prioridad, asignar responsables, registrar acciones y descargar reportes PDF.
+- Reportes PDF incluyen “Historial de responsables” y “Historial de acciones”, mostrando la prioridad en español y el responsable que estaba activo al crear cada acción.
 
-## Dev Notes
-- Mantén `case_manager_url`, `CASE_MANAGER_PUBLIC_URL` en `docker-compose.yml`.
-- Cuando edites templates (Jinja), recuerda reconstruir el contenedor o usar `uvicorn --reload`.
-- Tests en `tests/dashboard/` (FastAPI `TestClient`).
-- Documenta cambios visuales con screenshots en PRs.
+## Recomendaciones
+- Mantén las traducciones y etiquetas en español (HTML/JS/PDF).
+- Usa `CASE_MANAGER_URL`/`CASE_MANAGER_PUBLIC_URL` en `docker-compose.yml` para que la UI llame al case manager correctamente.
+- Verifica que los endpoints `/case-responsibles/catalog`, `/cases/{id}/responsibles` y `/cases/{id}/actions` respondan 200 antes de probar la UI (revisa `docker compose logs dashboard case_manager`).
+- Tests: `pytest` + `fastapi.TestClient` (ver `tests/dashboard/`). Mockea MySQL si es posible.

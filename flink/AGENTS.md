@@ -1,16 +1,16 @@
-# Flink Guidelines
+# Lineamientos de Flink
 
-## Overview
-- Define el job que consume Kafka (Debezium) y escribe agregados en MySQL (`agg_age_group`, `agg_gender`, `agg_hourly`).
-- Controla timezone vía `FLINK_LOCAL_TIMEZONE` para que `HOUR()` alimente correctamente al dashboard.
+## Descripción
+- Job SQL/Java (`flink-job/src/...`) que consume los tópicos Debezium (`lost_persons_server.*`), calcula agregados (edad, género, hora) y los escribe en MySQL (`agg_*`).
+- Usa `FLINK_LOCAL_TIMEZONE` para que los cálculos horarios coincidan con la UI.
 
-## Build & Deploy
-- `mvn -f flink-job/pom.xml clean package`
-- `docker compose build jobmanager taskmanager`
-- `docker compose up -d jobmanager taskmanager`
-- Verifica: `docker compose exec jobmanager /opt/flink/bin/flink list`
+## Flujo de trabajo
+1. `mvn -f flink-job/pom.xml clean package`
+2. `docker compose build jobmanager taskmanager`
+3. `docker compose up -d jobmanager taskmanager`
+4. Verificar: `docker compose exec jobmanager /opt/flink/bin/flink list`
 
-## Notes
-- JAR en `/opt/flink/usrlib/lost-persons-job.jar` (copiado desde `flink-job/target`).
-- Usa `scripts/run_flink_job.sh` para reinyectar el job manualmente.
-- Mantén connectors/ JARs en `flink/jars/` actualizados y documenta versiones en PRs.
+## Notas
+- El `Dockerfile` copia `flink/start_jobmanager_with_sql.sh`, conecta a Kafka y ejecuta el jar automáticamente.
+- Si debes redeployar manualmente, usa `scripts/run_flink_job.sh`.
+- Documenta cambios en conectores JAR y versiones en cada PR.
