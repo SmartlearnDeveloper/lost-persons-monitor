@@ -126,10 +126,6 @@ Configura estos valores en `docker-compose.yml` antes de construir los contenedo
 - Previous stable: `version_1_0_0` (monolithic uvicorn processes, documented for reference in release notes).
 - Release notes live in `RELEASE_NOTES.md` and are updated alongside tags. Mention any open investigations (e.g., Debezium automation) when tagging.
 
-## Known Issues (Under Investigation)
-
-- `connector_init` may exit before Kafka Connect is fully online, logging `curl: (7) Failed to connect to connect port 8083`. Re-run `docker compose run --rm connector_init` or manually POST `debezium-connector.json` once `connect` reports healthy. Root cause analysis continues for `version_2_0_0`.
-
 ## Validation
 
 After bringing the stack up, run `python scripts/stack_check.py` to hit the key service endpoints (producer, dashboard, case manager, and Kafka Connect). The script exits with a non-zero status if any check fails, making it suitable for CI or quick sanity checks before demos.
