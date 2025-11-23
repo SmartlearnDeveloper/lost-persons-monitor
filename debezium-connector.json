@@ -19,6 +19,8 @@
     "schema.history.internal.kafka.topic": "dbhistory.lost_persons",
     "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
     "include.schema.changes": "false",
+    "poll.interval.ms": "500",
+    "max.batch.size": "256",
     "value.converter": "org.apache.kafka.connect.json.JsonConverter",
     "value.converter.schemas.enable": "false",
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lost Person Reporter Tester</title>
+    <title>Simulador de reportes de personas perdidas</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
@@ -75,7 +75,7 @@
 
         <div class="card">
             <div class="card-header">
-                <strong>Latest request</strong>
+                <strong>Última solicitud</strong>
             </div>
             <div class="card-body">
                 <div class="row g-3">
@@ -92,7 +92,7 @@
         </div>
 
         <footer class="text-center text-muted mt-4 small">
-            <div>Tip: deja esta página abierta mientras ves el dashboard para confirmar que las estadísticas se actualizan.</div>
+            <div>Consejo: deja esta página abierta mientras ves el dashboard para confirmar que las estadísticas se actualizan.</div>
             <div class="mt-2">{{ brand_name }} · {{ brand_copyright }}</div>
         </footer>
     </div>
@@ -100,15 +100,15 @@
     <script>
         const producerEndpoint = "{{ producer_endpoint }}";
 
-        const SAMPLE_FIRST_NAMES = ['Maria', 'Juan', 'Leila', 'Charles', 'Amelia', 'Diego', 'Sasha', 'Omar', 'Greta', 'Noah'];
-        const SAMPLE_LAST_NAMES = ['Lopez', 'Rodriguez', 'Chen', 'Khan', 'Young', 'Nakamura', 'Singh', 'Anders', 'Diaz', 'Baker'];
-        const SAMPLE_LOCATIONS = ['Denver, CO', 'Phoenix, AZ', 'Seattle, WA', 'Chicago, IL', 'San Juan, PR', 'Austin, TX', 'Portland, OR', 'New York, NY'];
+        const SAMPLE_FIRST_NAMES = ['María', 'Juan', 'Leila', 'Carlos', 'Amelia', 'Diego', 'Sofía', 'Omar', 'Greta', 'Nicolás'];
+        const SAMPLE_LAST_NAMES = ['López', 'Rodríguez', 'Chen', 'Khan', 'García', 'Nakamura', 'Singh', 'Anders', 'Díaz', 'Baker'];
+        const SAMPLE_LOCATIONS = ['Quito, Ecuador', 'Guayaquil, Ecuador', 'Bogotá, Colombia', 'Lima, Perú', 'Ciudad de México, México', 'San Juan, Puerto Rico', 'Santiago, Chile', 'Madrid, España'];
         const SAMPLE_NOTES = [
-            'Last seen near the central transit station.',
-            'Was wearing a green jacket and hiking boots.',
-            'Reported missing after failing to return from a morning run.',
-            'May respond to the nickname "Lulu".',
-            'Carrying a blue backpack with medical supplies.'
+            'Vista por última vez cerca de la estación central.',
+            'Vestía chaqueta verde y botas de excursión.',
+            'Reportada como desaparecida tras no volver de una caminata matutina.',
+            'Responde al apodo de \"Lulu\".',
+            'Portaba una mochila azul con suministros médicos.'
         ];
 
         const formEls = {
@@ -197,12 +197,12 @@
             updatePreview(payload, null);
 
             if (!payload.first_name || !payload.last_name || !payload.gender || !payload.birth_date) {
-                setAlert('Please fill in the required fields before sending.', 'warning');
+                setAlert('Por favor completa los campos obligatorios antes de enviar.', 'warning');
                 return;
             }
 
             sendBtn.disabled = true;
-            setAlert('Sending report...', 'info');
+            setAlert('Enviando reporte...', 'info');
 
             try {
                 const response = await fetch(producerEndpoint, {
@@ -220,11 +220,11 @@
                     throw new Error(Array.isArray(errorDetail) ? errorDetail.join(', ') : String(errorDetail));
                 }
 
-                setAlert('Report sent successfully.', 'success');
+                setAlert('Reporte enviado correctamente.', 'success');
                 updatePreview(payload, data);
             } catch (error) {
-                console.error('Failed to send report', error);
-                setAlert(`Failed to send report: ${error.message}`, 'danger');
+                console.error('Error al enviar el reporte', error);
+                setAlert(`No se pudo enviar el reporte: ${error.message}`, 'danger');
                 updatePreview(payload, { error: error.message });
             } finally {
                 sendBtn.disabled = false;

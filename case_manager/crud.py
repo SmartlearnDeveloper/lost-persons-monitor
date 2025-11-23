@@ -94,15 +94,19 @@ def update_case(
     resolution_summary: Optional[str] = None,
     is_priority: Optional[bool] = None,
 ) -> Case:
+    new_status_enum: Optional[CaseStatusEnum] = None
     if status:
         try:
-            case.status = CaseStatusEnum(status)
+            new_status_enum = CaseStatusEnum(status)
+            case.status = new_status_enum
         except ValueError:
-            pass
+            new_status_enum = None
     if priority is not None:
         case.priority = priority
     if resolved_at is not None:
         case.resolved_at = resolved_at
+    elif new_status_enum == CaseStatusEnum.RESOLVED and case.resolved_at is None:
+        case.resolved_at = datetime.utcnow()
     if resolution_summary is not None:
         case.resolution_summary = resolution_summary
     if is_priority is not None:

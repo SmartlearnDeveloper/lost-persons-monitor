@@ -1,11 +1,25 @@
+import os
+from datetime import date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from datetime import date, datetime
 
 from producer import models
 from producer.database import get_db
-from scripts.db_init import PersonLost
+from scripts.db_init import PersonLost, Case, CaseStatusEnum
+
+DEFAULT_TIMEZONE = "America/Guayaquil"
+_tz_name = os.getenv("REPORT_LOCAL_TZ", DEFAULT_TIMEZONE)
+try:
+    REPORT_TIMEZONE = ZoneInfo(_tz_name)
+except ZoneInfoNotFoundError:
+    REPORT_TIMEZONE = ZoneInfo("UTC")
+
+
+def _local_now() -> datetime:
+    # DB column is naive; store local system time without tz info
+    return datetime.now(REPORT_TIMEZONE).replace(tzinfo=None)
 
 app = FastAPI(title="Lost Persons Reporter API")
 
@@ -42,7 +56,7 @@ def report_person(payload: models.ReportPersonPayload, db: Session = Depends(get
         gender=payload.gender,
         birth_date=payload.birth_date,
         age=age,
-        lost_timestamp=datetime.utcnow(),
+        lost_timestamp=_local_now(),
         lost_location=payload.lost_location,
         details=payload.details,
         status='active'
@@ -50,6 +64,17 @@ def report_person(payload: models.ReportPersonPayload, db: Session = Depends(get
     
     try:
         db.add(db_person)
+        db.flush()  # ensure person_id is available for the related case
+
+        db_case = Case(
+            person_id=db_person.person_id,
+            status=CaseStatusEnum.NEW,
+            reported_at=db_person.lost_timestamp,
+            priority=None,
+            is_priority=False,
+        )
+        db.add(db_case)
+
         db.commit()
         db.refresh(db_person)
         return db_person

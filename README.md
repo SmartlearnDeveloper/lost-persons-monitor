@@ -14,15 +14,17 @@ Lost Persons Monitor is a change-data-capture (CDC) pipeline that ingests lost-p
    `pip install -r dashboard/requirements.txt`
 5. (Optional but recommended) Reset the MySQL schema to a blank slate:  
    `./scripts/reset_db.sh`  
-   _(Esto inicia solo el contenedor de MySQL, elimina y recrea las tablas para comenzar sin registros.)_
+   _(Esto inicia solo el contenedor de MySQL, espera a que esté saludable, elimina y recrea las tablas para comenzar sin registros.)_
 6. Compile the Flink job (run this whenever you change the streaming logic):  
    `mvn -f flink-job/pom.xml clean package`
 7. Build and launch the full microservice stack (introduced in `version_2_0_0`):  
    `docker compose up -d --build`
-8. Wait for the `connector_init` helper to finish (it registers the Debezium connector automatically). _Known issue_: Kafka Connect sometimes takes longer to boot, causing `connector_init` to exit with `curl: (7)`; if the logs show that error, rerun  
+8. Wait for the `connector_init` helper to finish (it registers the Debezium connector automatically with `poll.interval.ms=500` and `max.batch.size=256` to minimize end-to-end latency). _Known issue_: Kafka Connect sometimes takes longer to boot, causing `connector_init` to exit with `curl: (7)`; if the logs show that error, rerun  
    `docker compose run --rm connector_init` once the `connect` service is healthy.
-9. The JobManager automatically runs the packaged Flink job (`flink run -d /opt/flink/usrlib/lost-persons-job.jar`). Use `docker compose exec jobmanager /opt/flink/bin/flink list` to verify the aggregation job is RUNNING, or run `scripts/run_flink_job.sh` to redeploy manually after rebuilding the jar.
-10. For local-only experiments, you can still start an individual API with uvicorn (e.g., `uvicorn producer.main:app --reload --host 0.0.0.0 --port 58101`), but the recommended workflow is through Docker so each service gets its own containerized runtime.
+9. The JobManager automatically runs the packaged Flink job (`flink run -d /opt/flink/usrlib/lost-persons-job.jar`) after its REST endpoint is reachable and Kafka becomes available. Use  
+   `docker compose exec jobmanager /opt/flink/bin/flink list`  
+   to verify the aggregation job is RUNNING, or rerun `mvn clean package` + `docker compose up -d --build jobmanager taskmanager` anytime you change streaming logic.
+10. For local-only experiments, you can still start an individual API with uvicorn (e.g., `uvicorn producer.main:app --reload --host 0.0.0.0 --port 58101`), but the recommended workflow is through Docker so each service gets its own containerized runtime with the proper environment variables (`REPORT_LOCAL_TZ`, `FLINK_LOCAL_TIMEZONE`, etc.).
 
 ### Service Port Map
 
@@ -40,15 +42,29 @@ Lost Persons Monitor is a change-data-capture (CDC) pipeline that ingests lost-p
 
 \* TaskManager port exposure is optional and used primarily for debugging RPC calls.
 
-## Web Application
+## Bringing the Stack Up & Accessing the UIs
 
-- `http://localhost:40145/` — landing page with links to the reporter form, analytics dashboard, and PDF reports.
-- `http://localhost:40145/report` — simple GUI to generate random missing-person entries and post them to the producer API.
-- `http://localhost:40145/dashboard` — charts refreshing in real time via WebSockets whenever Debezium ingests a report; data comes from the Flink aggregates with direct SQL fallbacks when aggregates are empty.
-- `http://localhost:40145/reports` — catalog of downloadable PDF reports with filterable inputs.
-- `http://localhost:40145/cases` — UI para crear/actualizar casos, registrar acciones y monitorear KPIs operativos.
+Once `docker compose up -d --build` finishes, the services with navegable UI endpoints are:
 
-The reporter UI issues `POST` requests to `http://localhost:40140/report_person/` (the producer service). A “Generar aleatorio” button pre-fills sample data so dispatch teams can simulate activity rapidly.
+| URL | Description |
+|-----|-------------|
+| `http://localhost:40145/` | Página principal con accesos directos a formularios, dashboard y reportería PDF. |
+| `http://localhost:40145/report` | Formulario para reportar personas perdidas (incluye botón “Generar aleatorio” y vista previa de carga/respuesta). Internamente hace `POST` a `http://localhost:40140/report_person/`. |
+| `http://localhost:40145/dashboard` | Panel operativo con KPIs y gráficas. Usa WebSockets para refrescarse tan pronto Debezium → Kafka → Flink escriben nuevos agregados. |
+| `http://localhost:40145/reports` | Catálogo de reportes PDF (Alertas operativas, Distribución demográfica, Horaria, Sensibles, etc.). Cada enlace abre un formulario `POST` dedicado. |
+| `http://localhost:40145/cases` | Gestión de casos: crea/actualiza casos, registra acciones, marca prioridades y dispara los WebSockets del dashboard para que los KPIs se actualicen al instante. |
+| `http://localhost:40150/docs` | Documentación interactiva de la API del case manager (FastAPI docs). |
+| `http://localhost:40140/docs` (opcional) | Swagger UI del producer si ejecutas `uvicorn` fuera de Docker. |
+
+Parada limpia: `docker compose down`. Para reiniciar con imágenes frescas sin tocar el volumen de MySQL ejecuta `docker compose down` seguido de `docker compose up -d --build`.
+
+**Recomendaciones post-arranque**
+- Verifica Debezium y Kafka Connect:  
+  `docker compose exec connect curl -s http://localhost:8083/connectors/lost-persons-connector/status`  
+  debería devolver `state: RUNNING`.
+- Confirma el JobManager:  
+  `docker compose exec jobmanager /opt/flink/bin/flink list`
+- Revisa que los puertos mapeados (40140, 40145, 40150) respondan vía navegador o `curl`.
 
 ## PDF Reports
 
@@ -78,6 +94,14 @@ The reporter UI issues `POST` requests to `http://localhost:40140/report_person/
 - Case data is backed by the new schema (`case_cases`, `case_actions`) created via `scripts/db_init.py`.
 - Personaliza prioridades (`config/case_priorities.json`) y tipos de acción (`config/case_action_types.json`) sin tocar el código.
 
+## Real-Time Data Path
+
+1. Producer guarda `persons_lost` usando `REPORT_LOCAL_TZ` (por defecto `America/Guayaquil`) y crea automáticamente un caso relacionado.
+2. Debezium (MySQL connector) vigila el binlog con `poll.interval.ms=500`, publica eventos JSON en `lost_persons_server.lost_persons_db.persons_lost`.
+3. El job de Flink (`lost-persons-job.jar`) consume el tópico, aplica `HOUR(TO_TIMESTAMP_LTZ(...))` usando `FLINK_LOCAL_TIMEZONE`, luego escribe agregados en `agg_age_group`, `agg_gender` y `agg_hourly`.
+4. El dashboard escucha Kafka mediante `aiokafka` y WebSockets; cada evento dispara `refreshDashboard()` para refrescar KPIs y gráficas sin recargar la página.
+5. Cambios en los casos (resueltos, acciones, etc.) viajan por el case manager: cada `POST/PATCH` notifica al dashboard (`/internal/refresh`) para que los KPI (calculados desde `/case-stats/*`) reaccionen inmediatamente, aunque no haya nuevos eventos en `persons_lost`.
+
 ## Documentation Index
 
 - Start with the nearest `AGENTS.md` file in any directory to see contributor guidance tailored to that service or package. The root `AGENTS.md` outlines project-wide practices, while subdirectories (e.g., `producer/AGENTS.md`, `dashboard/AGENTS.md`) provide focused instructions.
@@ -86,6 +110,15 @@ The reporter UI issues `POST` requests to `http://localhost:40140/report_person/
 - `scripts/run_flink_job.sh` es útil si necesitas resubir manualmente el job de Flink después de recompilar el jar.
 
 Refer to service-specific `AGENTS.md` files for detailed testing, deployment, and security practices.
+
+## Environment Variables
+
+- `REPORT_LOCAL_TZ`: zona horaria (IANA) usada por el producer para sellar `lost_timestamp` (ej. `America/Guayaquil`).
+- `FLINK_LOCAL_TIMEZONE`: zona usada por Flink para funciones `TO_TIMESTAMP_LTZ` / `HOUR` (misma sugerencia que arriba).
+- `CASE_MANAGER_URL` / `CASE_MANAGER_PUBLIC_URL`: endpoint interno y público consumidos por el dashboard.
+- `DASHBOARD_REFRESH_URL`: URL interna para que el case manager dispare refrescos (`http://dashboard:58102/internal/refresh` por defecto).
+
+Configura estos valores en `docker-compose.yml` antes de construir los contenedores si despliegas en otra región.
 
 ## Versioning & Releases
 

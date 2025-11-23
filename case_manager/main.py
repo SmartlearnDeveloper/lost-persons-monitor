@@ -1,6 +1,9 @@
 from __future__ import annotations
+import json
+import os
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib import request as urllib_request, error as urllib_error
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +14,7 @@ from case_manager.database import get_db
 # Note: ORM models are imported indirectly through crud module
 
 app = FastAPI(title="Lost Persons Case Manager")
+DASHBOARD_REFRESH_URL = os.environ.get("DASHBOARD_REFRESH_URL")
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,6 +23,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+
+def notify_dashboard_refresh(event: str, case_id: Optional[int] = None) -> None:
+    if not DASHBOARD_REFRESH_URL:
+        return
+    payload = json.dumps({"event": event, "case_id": case_id}).encode("utf-8")
+    req = urllib_request.Request(
+        DASHBOARD_REFRESH_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        urllib_request.urlopen(req, timeout=2)
+    except urllib_error.URLError:
+        pass
 
 
 @app.get("/")
@@ -71,6 +91,7 @@ def create_case(payload: schemas.CaseCreate, db: Session = Depends(get_db)):
         reported_at=payload.reported_at,
         is_priority=payload.is_priority or False,
     )
+    notify_dashboard_refresh("case_created", case.case_id)
     return case
 
 
@@ -88,6 +109,7 @@ def update_case(case_id: int, payload: schemas.CaseUpdate, db: Session = Depends
         resolution_summary=payload.resolution_summary,
         is_priority=payload.is_priority,
     )
+    notify_dashboard_refresh("case_updated", case.case_id)
     return case
 
 
@@ -112,6 +134,7 @@ def create_action(case_id: int, payload: schemas.CaseActionCreate, db: Session =
         actor=payload.actor,
         metadata_json=payload.metadata_json,
     )
+    notify_dashboard_refresh("case_action_created", case.case_id)
     return action
 
 

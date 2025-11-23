@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import contextlib
+import logging
 from collections import Counter
 from datetime import datetime, date, time, timedelta
 from html import escape
@@ -49,9 +50,17 @@ WEEKDAY_NAMES_ES = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado
 BRAND_NAME = "Lost Persons Monitor"
 BRAND_OWNER = "ICM Software Development"
 BRAND_REPORT_FOOTER = f"Reporte generado por el sistema {BRAND_NAME}."
-CASE_MANAGER_URL = os.environ.get("CASE_MANAGER_URL", "http://localhost:58103")
+CASE_MANAGER_INTERNAL_URL = os.environ.get("CASE_MANAGER_URL", "http://localhost:58103")
+CASE_MANAGER_PUBLIC_URL = os.environ.get("CASE_MANAGER_PUBLIC_URL", CASE_MANAGER_INTERNAL_URL)
 PRODUCER_PUBLIC_URL = os.environ.get("PRODUCER_PUBLIC_URL", "http://localhost:40140/report_person/")
 CASE_STATUS_VALUES = [status.value for status in CaseStatusEnum]
+CASE_STATUS_LABELS = {
+    "new": "Nuevo",
+    "in_progress": "En progreso",
+    "resolved": "Resuelto",
+    "cancelled": "Cancelado",
+    "archived": "Archivado",
+}
 SENSITIVE_TERMS: List[dict] = []
 SENSITIVE_INDEX: List[dict] = []
 SEVERITY_RANK = {"alta": 3, "media": 2, "baja": 1}
@@ -87,22 +96,30 @@ class DashboardSocketManager:
 
 ws_manager = DashboardSocketManager()
 _consumer_task: Optional[asyncio.Task] = None
+logger = logging.getLogger("dashboard")
 
 
 async def _kafka_listener() -> None:
-    consumer = AIOKafkaConsumer(
-        KAFKA_TOPIC,
-        bootstrap_servers=KAFKA_BOOTSTRAP,
-        group_id="dashboard-realtime",
-        enable_auto_commit=True,
-        auto_offset_reset="latest",
-    )
-    await consumer.start()
-    try:
-        async for _msg in consumer:
-            await ws_manager.broadcast(json.dumps({"event": "refresh"}))
-    finally:
-        await consumer.stop()
+    retry_delay = 5
+    while True:
+        consumer = AIOKafkaConsumer(
+            KAFKA_TOPIC,
+            bootstrap_servers=KAFKA_BOOTSTRAP,
+            group_id="dashboard-realtime",
+            enable_auto_commit=True,
+            auto_offset_reset="latest",
+        )
+        try:
+            await consumer.start()
+            logger.info("Kafka listener conectado al tópico %s", KAFKA_TOPIC)
+            async for _msg in consumer:
+                await ws_manager.broadcast(json.dumps({"event": "refresh"}))
+        except Exception as exc:
+            logger.warning("Kafka listener error: %s. Reintentando en %s s...", exc, retry_delay)
+            await asyncio.sleep(retry_delay)
+        finally:
+            with contextlib.suppress(Exception):
+                await consumer.stop()
 
 
 @app.on_event("startup")
@@ -119,6 +136,12 @@ async def stop_background_tasks() -> None:
         _consumer_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await _consumer_task
+
+
+@app.post("/internal/refresh")
+async def internal_refresh() -> dict:
+    await ws_manager.broadcast(json.dumps({"event": "refresh"}))
+    return {"status": "ok"}
 
 
 def _load_sensitive_terms() -> None:
@@ -201,7 +224,7 @@ _load_action_types()
 
 
 def _case_manager_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
-    url = f"{CASE_MANAGER_URL}{path}"
+    url = f"{CASE_MANAGER_INTERNAL_URL}{path}"
     try:
         with httpx.Client(timeout=5.0) as client:
             response = client.get(url, params=params)
@@ -228,10 +251,17 @@ def _template_context(request: Request, **kwargs) -> dict:
         "brand_owner": BRAND_OWNER,
         "brand_report_footer": BRAND_REPORT_FOOTER,
         "brand_copyright": _copyright_notice(),
-        "case_manager_url": CASE_MANAGER_URL,
+        "case_manager_url": CASE_MANAGER_PUBLIC_URL,
         "priority_options": PRIORITY_OPTIONS,
         "action_types": CASE_ACTION_TYPES,
         "case_status_values": CASE_STATUS_VALUES,
+        "case_status_options": [
+            {
+                "value": value,
+                "label": CASE_STATUS_LABELS.get(value, value.replace("_", " ").title()),
+            }
+            for value in CASE_STATUS_VALUES
+        ],
     }
     base.update(kwargs)
     return base

@@ -96,6 +96,7 @@ services:
     command: ["/opt/flink/bin/start_jobmanager_with_sql.sh"]
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - FLINK_LOCAL_TIMEZONE=America/Guayaquil
     networks:
       - monitor-net
 
@@ -111,6 +112,7 @@ services:
     command: taskmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - FLINK_LOCAL_TIMEZONE=America/Guayaquil
     networks:
       - monitor-net
 
@@ -149,6 +151,7 @@ services:
       DB_PASSWORD: password
       DB_NAME: lost_persons_db
       CASE_MANAGER_URL: http://case_manager:58103
+      CASE_MANAGER_PUBLIC_URL: http://localhost:40150
       PRODUCER_PUBLIC_URL: http://localhost:40140/report_person/
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     networks:
@@ -169,6 +172,7 @@ services:
       DB_USER: user
       DB_PASSWORD: password
       DB_NAME: lost_persons_db
+      DASHBOARD_REFRESH_URL: http://dashboard:58102/internal/refresh
     networks:
       - monitor-net
 

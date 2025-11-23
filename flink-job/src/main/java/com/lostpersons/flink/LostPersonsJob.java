@@ -1,5 +1,7 @@
 package com.lostpersons.flink;
 
+import java.time.DateTimeException;
+import java.time.ZoneId;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.StatementSet;
 import org.apache.flink.table.api.TableEnvironment;
@@ -15,9 +17,19 @@ public final class LostPersonsJob {
         tableEnv.getConfig().getConfiguration().setString("restart-strategy", "fixed-delay");
         tableEnv.getConfig().getConfiguration().setString("restart-strategy.fixed-delay.attempts", "10");
         tableEnv.getConfig().getConfiguration().setString("restart-strategy.fixed-delay.delay", "10 s");
+        configureLocalTimeZone(tableEnv);
 
         createTables(tableEnv);
         submitInserts(tableEnv);
+    }
+
+    private static void configureLocalTimeZone(TableEnvironment tableEnv) {
+        String zoneId = System.getenv().getOrDefault("FLINK_LOCAL_TIMEZONE", "UTC");
+        try {
+            tableEnv.getConfig().setLocalTimeZone(ZoneId.of(zoneId));
+        } catch (DateTimeException ex) {
+            tableEnv.getConfig().setLocalTimeZone(ZoneId.of("UTC"));
+        }
     }
 
     private static void createTables(TableEnvironment tableEnv) {
