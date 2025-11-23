@@ -88,6 +88,7 @@ require_dashboard_permission = require_permissions(["dashboard"])
 require_case_permission = require_permissions(["case_manager"])
 require_pdf_permission = require_permissions(["pdf_reports"])
 require_report_permission = require_permissions(["report"])
+require_admin_permission = require_permissions(["manage_users"])
 
 class DashboardSocketManager:
     def __init__(self) -> None:
