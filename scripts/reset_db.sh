@@ -27,4 +27,7 @@ done
 echo "Eliminando y recreando el esquema, luego aplicando migraciones..."
 docker compose run --rm --no-deps -e RESET_DB=1 producer python scripts/db_init.py
 
+echo "Tablas actuales en lost_persons_db:"
+docker compose exec mysql mysql -uuser -ppassword -e "SHOW TABLES FROM lost_persons_db;"
+
 echo "Base de datos reiniciada; ejecuta 'docker compose up -d' para el resto del stack."
