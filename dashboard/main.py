@@ -2065,7 +2065,12 @@ async def admin_users_page(request: Request):
     if not current_user:
         return _login_redirect(request)
     token = _proxy_auth_header(request)
-    data = _auth_service_request("GET", "/auth/users", token=token)
+    try:
+        data = _auth_service_request("GET", "/auth/users", token=token)
+    except HTTPException as exc:
+        if exc.status_code in {401, 403}:
+            return _login_redirect(request)
+        raise
     return templates.TemplateResponse(
         "admin_users.html",
         _template_context(request, users=data or [], current_user=current_user),
