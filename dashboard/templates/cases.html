@@ -103,6 +103,18 @@
                 </div>
             </div>
             <div class="col-lg-6">
+                <div class="card-panel mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h2 class="h6 mb-0">Historial de responsables</h2>
+                            <small class="text-muted">ID: <span id="responsibleCaseIdLabel">--</span></small>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" id="addResponsibleBtn" disabled>Asignar responsable</button>
+                    </div>
+                    <div id="responsiblesList" class="list-group list-group-flush" style="max-height: 180px; overflow-y: auto;">
+                        <div class="text-muted">Selecciona un caso para ver los responsables asignados.</div>
+                    </div>
+                </div>
                 <div class="card-panel actions-log">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div>
@@ -139,6 +151,32 @@
             <div class="d-flex justify-content-end gap-2">
                 <button type="button" id="actionModalCancel" class="btn btn-outline-secondary">Cancelar</button>
                 <button type="button" id="actionModalConfirm" class="btn btn-primary">Registrar acción</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="responsibleModal" class="modal-overlay">
+        <div class="modal-card">
+            <h5>Asignar responsable</h5>
+            <div class="mb-3">
+                <label for="responsibleSelect" class="form-label">Selecciona responsable</label>
+                <select id="responsibleSelect" class="form-select">
+                    {% for option in responsible_options %}
+                    <option value="{{ option.value }}">{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="responsibleAssignedBy" class="form-label">Asignado por</label>
+                <input id="responsibleAssignedBy" type="text" class="form-control" placeholder="Nombre del asignador (opcional)" />
+            </div>
+            <div class="mb-3">
+                <label for="responsibleNotes" class="form-label">Notas</label>
+                <textarea id="responsibleNotes" class="form-control" rows="3" placeholder="Instrucciones o detalles (opcional)"></textarea>
+            </div>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" id="responsibleModalCancel" class="btn btn-outline-secondary">Cancelar</button>
+                <button type="button" id="responsibleModalConfirm" class="btn btn-primary">Guardar</button>
             </div>
         </div>
     </div>
@@ -181,11 +219,21 @@
         const actionNotesInput = document.getElementById('actionNotesInput');
         const actionModalConfirm = document.getElementById('actionModalConfirm');
         const actionModalCancel = document.getElementById('actionModalCancel');
-        let currentActionCaseId = null;
         const actionsList = document.getElementById('actionsList');
         const selectedCaseIdLabel = document.getElementById('selectedCaseIdLabel');
         const actionsCaseIdLabel = document.getElementById('actionsCaseIdLabel');
+        const responsiblesList = document.getElementById('responsiblesList');
+        const addResponsibleBtn = document.getElementById('addResponsibleBtn');
+        const responsibleCaseIdLabel = document.getElementById('responsibleCaseIdLabel');
+        const responsibleModal = document.getElementById('responsibleModal');
+        const responsibleSelect = document.getElementById('responsibleSelect');
+        const responsibleAssignedBy = document.getElementById('responsibleAssignedBy');
+        const responsibleNotes = document.getElementById('responsibleNotes');
+        const responsibleModalConfirm = document.getElementById('responsibleModalConfirm');
+        const responsibleModalCancel = document.getElementById('responsibleModalCancel');
 
+        let currentActionCaseId = null;
+        let currentResponsibleCaseId = null;
         const personLabels = new Map();
 
         function populatePrioritySelect(selectElement, selectedValue = '') {
@@ -285,13 +333,17 @@
             caseIdField.value = '';
             selectedCaseIdLabel.textContent = '--';
             actionsCaseIdLabel.textContent = '--';
+            responsibleCaseIdLabel.textContent = '--';
             statusSelect.value = 'new';
             populatePrioritySelect(updatePrioritySelect, '');
             resolvedAt.value = '';
             updateFlagPriority.checked = false;
             resolutionSummary.value = '';
             addActionBtn.disabled = true;
+            addResponsibleBtn.disabled = true;
+            currentResponsibleCaseId = null;
             actionsList.innerHTML = '<div class="text-muted">Selecciona un caso para ver su historial.</div>';
+            responsiblesList.innerHTML = '<div class="text-muted">Selecciona un caso para ver los responsables asignados.</div>';
         }
 
         casesTableBody.addEventListener('click', async (event) => {
@@ -307,21 +359,29 @@
                     caseIdField.value = caseData.case_id;
                     selectedCaseIdLabel.textContent = `#${caseData.case_id}`;
                     actionsCaseIdLabel.textContent = `#${caseData.case_id}`;
+                    responsibleCaseIdLabel.textContent = `#${caseData.case_id}`;
                     statusSelect.value = caseData.status;
                     populatePrioritySelect(updatePrioritySelect, caseData.priority || '');
                     resolvedAt.value = formatDateInput(caseData.resolved_at);
                     updateFlagPriority.checked = caseData.is_priority || false;
                     resolutionSummary.value = caseData.resolution_summary || '';
                     addActionBtn.disabled = false;
+                     addResponsibleBtn.disabled = false;
+                    currentResponsibleCaseId = caseData.case_id;
                     loadActions(caseId);
+                    loadResponsibles(caseId);
                 } catch (error) {
                     showAlert(error.message || 'Error al cargar el caso', 'danger');
                 }
             } else if (button.dataset.action === 'actions') {
                 addActionBtn.disabled = false;
+                addResponsibleBtn.disabled = false;
                 caseIdField.value = caseId;
                 actionsCaseIdLabel.textContent = `#${caseId}`;
+                responsibleCaseIdLabel.textContent = `#${caseId}`;
+                currentResponsibleCaseId = Number(caseId);
                 await loadActions(caseId);
+                await loadResponsibles(caseId);
             } else if (button.dataset.action === 'report') {
                 window.open(`/cases/${caseId}/report`, '_blank');
             }
@@ -358,6 +418,40 @@
             }
         }
 
+        function renderResponsibles(items) {
+            responsiblesList.innerHTML = '';
+            if (!items.length) {
+                responsiblesList.innerHTML = '<div class="text-muted">Este caso aún no tiene responsables asignados.</div>';
+                return;
+            }
+            items.forEach((entry) => {
+                const row = document.createElement('div');
+                row.className = 'list-group-item';
+                row.innerHTML = `
+                    <div class="d-flex justify-content-between">
+                        <strong>${entry.responsible_name}</strong>
+                        <span class="text-muted small">${formatDate(entry.assigned_at)}</span>
+                    </div>
+                    <div class="small text-muted">Asignado por: ${entry.assigned_by || 'N/A'}</div>
+                    <p class="mb-0">${entry.notes || 'Sin notas'}</p>
+                `;
+                responsiblesList.appendChild(row);
+            });
+        }
+
+        async function loadResponsibles(caseId) {
+            if (!caseId) {
+                responsiblesList.innerHTML = '<div class="text-muted">Selecciona un caso para ver los responsables asignados.</div>';
+                return;
+            }
+            try {
+                const data = await fetchJson(`${CASE_MANAGER_URL}/cases/${caseId}/responsibles`);
+                renderResponsibles(data);
+            } catch (error) {
+                responsiblesList.innerHTML = `<div class="text-danger">${error.message || 'Error al cargar responsables'}</div>`;
+            }
+        }
+
         updateForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             clearAlert();
@@ -379,7 +473,7 @@
                     })
                 });
                 showAlert('Caso actualizado.', 'success');
-                await Promise.all([loadCases(), loadActions(caseId)]);
+                await Promise.all([loadCases(), loadActions(caseId), loadResponsibles(caseId)]);
             } catch (error) {
                 showAlert(error.message || 'No fue posible actualizar el caso.', 'danger');
             }
@@ -435,6 +529,52 @@
         actionModal.addEventListener('click', (event) => {
             if (event.target === actionModal) {
                 closeActionModal();
+            }
+        });
+
+        function openResponsibleModal() {
+            if (!currentResponsibleCaseId) {
+                showAlert('Selecciona un caso antes de asignar un responsable.', 'warning');
+                return;
+            }
+            responsibleSelect.selectedIndex = 0;
+            responsibleAssignedBy.value = '';
+            responsibleNotes.value = '';
+            responsibleModal.classList.add('active');
+        }
+
+        function closeResponsibleModal() {
+            responsibleModal.classList.remove('active');
+        }
+
+        addResponsibleBtn.addEventListener('click', openResponsibleModal);
+        responsibleModalCancel.addEventListener('click', closeResponsibleModal);
+        responsibleModal.addEventListener('click', (event) => {
+            if (event.target === responsibleModal) {
+                closeResponsibleModal();
+            }
+        });
+
+        responsibleModalConfirm.addEventListener('click', async () => {
+            if (!currentResponsibleCaseId) {
+                showAlert('Selecciona un caso antes de asignar un responsable.', 'warning');
+                return;
+            }
+            try {
+                await fetchJson(`${CASE_MANAGER_URL}/cases/${currentResponsibleCaseId}/responsibles`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        responsible_name: responsibleSelect.value,
+                        assigned_by: responsibleAssignedBy.value || null,
+                        notes: responsibleNotes.value || null
+                    })
+                });
+                closeResponsibleModal();
+                showAlert('Responsable asignado correctamente.', 'success');
+                await loadResponsibles(currentResponsibleCaseId);
+            } catch (error) {
+                showAlert(error.message || 'No fue posible asignar al responsable.', 'danger');
             }
         });
 

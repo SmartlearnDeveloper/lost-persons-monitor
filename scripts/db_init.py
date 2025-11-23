@@ -87,6 +87,12 @@ class Case(Base):
 
     person = relationship("PersonLost", backref="case", uselist=False)
     actions = relationship("CaseAction", cascade="all, delete-orphan", back_populates="case")
+    responsibles = relationship(
+        "CaseResponsibleHistory",
+        cascade="all, delete-orphan",
+        back_populates="case",
+        order_by="CaseResponsibleHistory.assigned_at.desc()",
+    )
 
 class CaseAction(Base):
     __tablename__ = 'case_actions'
@@ -99,6 +105,18 @@ class CaseAction(Base):
     metadata_json = Column(String(2000))
 
     case = relationship("Case", back_populates="actions")
+
+
+class CaseResponsibleHistory(Base):
+    __tablename__ = 'case_responsible_history'
+    assignment_id = Column(Integer, primary_key=True, autoincrement=True)
+    case_id = Column(Integer, ForeignKey('case_cases.case_id'), nullable=False)
+    responsible_name = Column(String(200), nullable=False)
+    assigned_by = Column(String(200))
+    notes = Column(String(1000))
+    assigned_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+    case = relationship("Case", back_populates="responsibles")
 
 def init_db(reset_database: bool = False):
     """

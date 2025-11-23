@@ -71,6 +71,25 @@ class CaseListResponse(BaseModel):
     total: int
 
 
+class CaseResponsibleBase(BaseModel):
+    responsible_name: str = Field(..., max_length=200)
+    assigned_by: Optional[str] = Field(None, max_length=200)
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+class CaseResponsibleCreate(CaseResponsibleBase):
+    pass
+
+
+class CaseResponsible(CaseResponsibleBase):
+    assignment_id: int
+    case_id: int
+    assigned_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class CaseSummary(BaseModel):
     total_cases: int
     new_cases: int

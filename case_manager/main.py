@@ -138,6 +138,30 @@ def create_action(case_id: int, payload: schemas.CaseActionCreate, db: Session =
     return action
 
 
+@app.get("/cases/{case_id}/responsibles", response_model=list[schemas.CaseResponsible])
+def list_responsibles(case_id: int, db: Session = Depends(get_db)):
+    case = crud.get_case(db, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return crud.list_case_responsibles(db, case_id=case_id)
+
+
+@app.post("/cases/{case_id}/responsibles", response_model=schemas.CaseResponsible, status_code=201)
+def add_responsible(case_id: int, payload: schemas.CaseResponsibleCreate, db: Session = Depends(get_db)):
+    case = crud.get_case(db, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    entry = crud.create_case_responsible(
+        db,
+        case=case,
+        responsible_name=payload.responsible_name,
+        assigned_by=payload.assigned_by,
+        notes=payload.notes,
+    )
+    notify_dashboard_refresh("case_responsible_created", case.case_id)
+    return entry
+
+
 @app.get("/cases/stats/summary", response_model=schemas.CaseSummary)
 def summary_stats(db: Session = Depends(get_db)):
     data = crud.get_cases_summary(db)
