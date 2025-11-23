@@ -2,7 +2,7 @@
 
 ## Descripción
 - Servicio FastAPI (`dashboard/main.py`) que entrega HTML (Jinja) y endpoints JSON.
-- Funcionalidades clave: formularios de reporte, dashboard operativo, gestión de casos (edición, responsables, acciones), reportes PDF.
+- Funcionalidades clave: formularios de reporte, dashboard operativo, gestión de casos (edición, responsables, acciones), reportes PDF, registro de usuarios y módulo web de administración (`/admin/users`).
 - Corre como `dashboard_service` en Docker Compose (`http://localhost:40145`). Expone `/login`, gestiona las cookies (`lpm_token`) y consume el servicio `auth_service` (`http://auth_service:58104`).
 
 ## Configuración y ejecución
@@ -20,12 +20,14 @@
 - `/cases`: muestra la tabla “Personas reportadas perdidas”, permite editar estado/ prioridad, asignar responsables, registrar acciones y descargar reportes PDF.
 - Reportes PDF incluyen “Historial de responsables” y “Historial de acciones”, mostrando la prioridad en español y el responsable que estaba activo al crear cada acción.
 - `/login` -> obtiene un JWT desde `auth_service`, lo guarda en localStorage+cookie y redirige al módulo solicitado. Si el token expira, la UI llama a `LPMAuth.requireAuth()` y redirige automáticamente.
+- `/register` permite el autoservicio (rol `member`) y `/admin/users` expone la UI CRUD para roles con `manage_users` (usa `/admin/api/users*`).
 
 ## Autenticación
 - Todas las vistas verifican el token con `window.LPMAuth` (ver `dashboard/static/js/auth.js`). Si falta, redirigen a `/login?next=/ruta`.
 - `auth_service` se alcanza por `AUTH_SERVICE_URL` (interno) y `AUTH_PUBLIC_URL` (navegador). Asegúrate de exponer `AUTH_SECRET_KEY` y `AUTH_TOKEN_URL` en el contenedor para que `common/security.py` pueda validar JWTs.
 - El login crea una cookie HTTP-only (`lpm_token`) que `common/security` consume. Esa cookie se usa para los formularios PDF; no la cambies sin actualizar `common/security.py` y `auth.js`.
 - Cada cambio en `common/` requiere reconstruir `dashboard`/`case_manager`/`producer`/`auth_service` para mantener la lógica de seguridad alineada.
+- El módulo `/admin/users` se apoya en `/admin/api/users*`, que proxy-an los endpoints del auth service. Usa `window.LPMAuth.authFetch` para adjuntar tokens.
 
 ## Recomendaciones
 - Mantén las traducciones y etiquetas en español (HTML/JS/PDF).

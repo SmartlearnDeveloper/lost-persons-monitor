@@ -16,7 +16,7 @@
 - `config/`: plantillas de configuración (`config.json`, `debezium-connector.json`, prioridades, etc.).
 
 ## Comandos básicos
-1. `docker compose build producer` (tras cambiar `scripts/db_init.py`).
+1. `docker compose build producer` (tras cambiar `scripts/db_init.py` o `common/`).
 2. `./scripts/reset_db.sh` → reinicia MySQL, crea tablas y muestra `SHOW TABLES` al final (verifica que existan `auth_users`, `auth_roles`, etc.).
 3. `mvn -f flink-job/pom.xml clean package` → recompila el job.
 4. `docker compose up -d --build` → levanta toda la pila.
@@ -36,6 +36,7 @@
 - `auth_service` se levanta con la pila de Docker (`docker compose up -d --build`) y expone `http://localhost:40155/auth/login`.
 - `db_init.py` crea un usuario administrador (`admin / admin123`); cambia la contraseña inmediatamente usando `/auth/register` y `/auth/assign-role`.
 - Todos los módulos UI (`/report`, `/dashboard`, `/cases`, `/reports`) requieren un JWT. El login lo guarda en una cookie (`lpm_token`) y en `localStorage` para que el navegador envíe `Authorization: Bearer …` en cada `fetch` y para que los formularios (PDF) se autentiquen automáticamente.
+- `/register` habilita el autoservicio (rol `member`: `report`, `dashboard`, `pdf_reports`). `/admin/users` sólo aparece para `manage_users` y permite CRUD de cuentas.
 - Para scripts o Postman: ejecuta `curl -XPOST http://localhost:40155/auth/login -d 'username=admin&password=admin123'` y reutiliza el `access_token` contra producer, dashboard o case manager.
 
 ## Flujo de contribución

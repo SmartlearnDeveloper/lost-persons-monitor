@@ -255,6 +255,7 @@ def _seed_auth_data(engine) -> None:
         ("manage_users", "Administrar usuarios y roles"),
     ]
     roles = [
+        ("member", ["report", "dashboard", "pdf_reports"]),
         ("reporter", ["report", "dashboard"]),
         ("analyst", ["report", "dashboard", "pdf_reports"]),
         ("coordinator", ["report", "dashboard", "pdf_reports", "case_manager"]),

@@ -96,6 +96,19 @@
                         </a>
                     </div>
                 </div>
+                {% if current_user and 'manage_users' in current_user.permissions %}
+                <div class="col-md-4">
+                    <div class="border rounded-4 h-100 p-4 bg-white">
+                        <h2 class="h5">Administrar usuarios</h2>
+                        <p class="text-muted small mb-4">
+                            Crea cuentas, reinicia contraseñas y asigna roles a los miembros del equipo.
+                        </p>
+                        <a class="btn btn-outline-danger w-100" href="/admin/users">
+                            Abrir módulo de usuarios
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
         <div class="card-footer text-center text-muted small py-3">

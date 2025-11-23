@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Registro completado · {{ brand_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex align-items-center" style="min-height: 100vh;">
+    <div class="container text-center py-5">
+        <div class="mx-auto" style="max-width: 480px;">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <h1 class="h4">¡Registro exitoso!</h1>
+                    <p class="text-muted">La cuenta <strong>{{ new_username }}</strong> fue creada. Ahora puedes iniciar sesión para usar los módulos autorizados.</p>
+                    <a class="btn btn-primary" href="/login">Ir al login</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

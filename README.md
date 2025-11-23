@@ -44,6 +44,8 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
 | Gestión de casos + PDF             | `http://localhost:40145/cases`              |
 | Catálogo de reportes PDF           | `http://localhost:40145/reports`            |
 | Portal de autenticación            | `http://localhost:40145/login`              |
+| Registro de usuarios               | `http://localhost:40145/register`           |
+| Administración de usuarios (admin) | `http://localhost:40145/admin/users`        |
 | API del servicio de autenticación  | `http://localhost:40155/docs`               |
 | API del producer                   | `http://localhost:40140/docs`               |
 | API del case manager               | `http://localhost:40150/docs`               |
@@ -51,12 +53,13 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
 
 ## Autenticación y roles
 
-- `auth_service` expone `/auth/login`, `/auth/register`, `/auth/assign-role` y `/auth/permissions`. Usa el mismo MySQL para guardar usuarios, roles y permisos.
+- `auth_service` expone `/auth/login`, `/auth/register`, `/auth/self-register`, `/auth/users/*` y `/auth/permissions`. Usa el mismo MySQL para guardar usuarios, roles y permisos.
 - Roles disponibles:
   - `reporter`: puede registrar personas perdidas (`report`) y ver estadísticas básicas (`dashboard`).
   - `analyst`: incluye permisos para descargar reportes PDF (`pdf_reports`).
   - `coordinator`: añade acceso al case manager (`case_manager`).
-  - `admin`: suma `manage_users` para crear/editar usuarios desde `/auth/register` y `/auth/assign-role`.
+-  - `member`: rol por defecto para autoservicio. Incluye `report`, `dashboard` y `pdf_reports` (sin acceso a `/cases`).
+  - `admin`: suma `manage_users` para crear/editar usuarios desde `/auth/register`, `/auth/users/*` o el módulo web.
 - Todos los frontales (`/report`, `/dashboard`, `/cases`, `/reports`) redirigen a `/login` si no detectan un JWT vigente. El login guarda el token en `localStorage` y en una cookie HTTP-only (`lpm_token`) para que FastAPI valide tanto `fetch` como los formularios tradicionales (PDF).
 - Para automatizar pruebas, solicita un token con cURL:
   ```bash
@@ -65,6 +68,8 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
        -d 'username=admin&password=admin123'
   ```
   El `access_token` debe enviarse como `Authorization: Bearer <token>` en cada microservicio.
+- Los usuarios pueden auto-registrarse desde `/register`; el sistema asigna el rol `member`. Para subir de nivel (por ejemplo, acceso a `/cases`), un administrador debe editar sus roles en `/admin/users`.
+- `/admin/users` sólo es visible para quienes tengan `manage_users`. Permite crear cuentas, restablecer contraseñas, activar/desactivar usuarios y ajustar roles/ permisos.
 
 ## Flujo de datos
 
@@ -84,6 +89,7 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
 - `AUTH_PUBLIC_URL`: URL expuesta del servicio de autenticación (`http://localhost:40155` en local).
 - `AUTH_TOKEN_URL`: endpoint usado por Swagger/OAuth2 (`http://localhost:40155/auth/login`).
 - `AUTH_DEFAULT_ADMIN_USERNAME` / `AUTH_DEFAULT_ADMIN_PASSWORD`: credenciales creadas automáticamente por `db_init.py` cuando la base se reinicia.
+- `AUTH_SELF_REGISTER_ROLES`: lista separada por comas de roles asignados al autoservicio (por defecto `member`).
 
 ## Validación tras despliegue
 

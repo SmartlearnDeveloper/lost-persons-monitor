@@ -299,6 +299,33 @@ def _login_redirect(request: Request) -> RedirectResponse:
     return RedirectResponse(url=f"/login?next={next_path}", status_code=303)
 
 
+def _auth_service_request(
+    method: str,
+    path: str,
+    *,
+    token: Optional[str] = None,
+    payload: Optional[dict] = None,
+    timeout: float = 8.0,
+) -> dict | None:
+    url = f"{AUTH_SERVICE_INTERNAL_URL.rstrip('/')}{path}"
+    headers = {}
+    if token:
+        headers["Authorization"] = token
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.request(method, url, json=payload)
+            response.raise_for_status()
+            if not response.content:
+                return None
+            return response.json()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text or "Error en servicio de autenticación"
+        raise HTTPException(status_code=exc.response.status_code, detail=detail)
+    except httpx.HTTPError as exc:
+        print(f"Auth service request failed: {exc}")
+        raise HTTPException(status_code=502, detail="Servicio de autenticación no disponible")
+
+
 def _current_year() -> int:
     return datetime.now().astimezone().year
 
@@ -1875,7 +1902,9 @@ async def login_form(request: Request, next: str = "/"):
     existing_user = _current_user_optional(request)
     if existing_user:
         return RedirectResponse(url=next_path or "/dashboard", status_code=303)
-    return templates.TemplateResponse("login.html", _template_context(request, next_url=next_path))
+    response = templates.TemplateResponse("login.html", _template_context(request, next_url=next_path))
+    response.delete_cookie(AUTH_COOKIE_NAME)
+    return response
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -1922,10 +1951,62 @@ async def logout(request: Request, next: str = Form("/")):
     return result
 
 
+@app.get("/register", response_class=HTMLResponse)
+async def register_form(request: Request):
+    if _current_user_optional(request):
+        return RedirectResponse(url="/dashboard", status_code=303)
+    return templates.TemplateResponse("register.html", _template_context(request))
+
+
+@app.post("/register", response_class=HTMLResponse)
+async def register_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    full_name: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+):
+    if _current_user_optional(request):
+        return RedirectResponse(url="/dashboard", status_code=303)
+    payload = {
+        "username": username,
+        "password": password,
+        "full_name": full_name,
+        "email": email,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{AUTH_SERVICE_INTERNAL_URL.rstrip('/')}/auth/self-register",
+                json=payload,
+            )
+    except httpx.HTTPError:
+        return templates.TemplateResponse(
+            "register.html",
+            _template_context(request, error_message="No fue posible registrar el usuario. Intenta más tarde."),
+            status_code=502,
+        )
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            detail = response.text or "Solicitud inválida"
+        return templates.TemplateResponse(
+            "register.html",
+            _template_context(request, error_message=detail),
+            status_code=response.status_code,
+        )
+    data = response.json()
+    context = _template_context(request, new_username=data.get("username"))
+    return templates.TemplateResponse("register_success.html", context)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def read_home(request: Request):
     """Landing page with navigation links to the main experiences."""
-    current_user = _current_user_optional(request)
+    current_user = _ensure_ui_permissions(request, ["report"])
+    if not current_user:
+        return _login_redirect(request)
     return templates.TemplateResponse("home.html", _template_context(request, current_user=current_user))
 
 
@@ -1966,6 +2047,65 @@ def case_responsible_catalog(
         auth_header=_proxy_auth_header(request),
     )
     return {"items": data or []}
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+async def admin_users_page(request: Request):
+    if not _ensure_ui_permissions(request, ["manage_users"]):
+        return _login_redirect(request)
+    return templates.TemplateResponse("admin_users.html", _template_context(request))
+
+
+@app.get("/admin/api/users")
+def admin_list_users(
+    request: Request,
+    _: TokenPayload = Depends(require_admin_permission),
+):
+    token = _proxy_auth_header(request)
+    data = _auth_service_request("GET", "/auth/users", token=token)
+    return {"items": data or []}
+
+
+@app.get("/admin/api/users/{username}")
+def admin_read_user(
+    username: str,
+    request: Request,
+    _: TokenPayload = Depends(require_admin_permission),
+):
+    token = _proxy_auth_header(request)
+    return _auth_service_request("GET", f"/auth/users/{username}", token=token)
+
+
+@app.post("/admin/api/users")
+async def admin_create_user(
+    request: Request,
+    _: TokenPayload = Depends(require_admin_permission),
+):
+    payload = await request.json()
+    token = _proxy_auth_header(request)
+    return _auth_service_request("POST", "/auth/register", token=token, payload=payload)
+
+
+@app.patch("/admin/api/users/{username}")
+async def admin_update_user(
+    username: str,
+    request: Request,
+    _: TokenPayload = Depends(require_admin_permission),
+):
+    payload = await request.json()
+    token = _proxy_auth_header(request)
+    return _auth_service_request("PATCH", f"/auth/users/{username}", token=token, payload=payload)
+
+
+@app.delete("/admin/api/users/{username}")
+def admin_delete_user(
+    username: str,
+    request: Request,
+    _: TokenPayload = Depends(require_admin_permission),
+):
+    token = _proxy_auth_header(request)
+    _auth_service_request("DELETE", f"/auth/users/{username}", token=token)
+    return {"status": "ok"}
 
 
 @app.get("/cases/{case_id}/report")
