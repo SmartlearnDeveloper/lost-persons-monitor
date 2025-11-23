@@ -53,7 +53,18 @@
                             <input type="text" class="form-control" name="full_name" placeholder="Nombre completo">
                             <input type="email" class="form-control" name="email" placeholder="Correo electrónico">
                             <input type="password" class="form-control" name="password" placeholder="Contraseña" required minlength="6">
-                            <input type="text" class="form-control" name="roles" placeholder="Roles (separados por coma, opcional)">
+                            <div>
+                                <p class="form-label mb-1">Roles</p>
+                                <div class="border rounded p-3">
+                                    {% for role in role_options %}
+                                    <div class="form-check">
+                                        <input class="form-check-input create-role" type="checkbox" value="{{ role.value }}" id="createRole{{ loop.index }}" {% if role.value == 'member' %}checked{% endif %}>
+                                        <label class="form-check-label" for="createRole{{ loop.index }}">{{ role.label }}</label>
+                                    </div>
+                                    {% endfor %}
+                                    <div class="text-muted small mt-2">Si no seleccionas roles, se asignará «Miembro» automáticamente.</div>
+                                </div>
+                            </div>
                             <button type="submit" class="btn btn-primary w-100">Crear</button>
                         </form>
                     </div>
@@ -66,7 +77,17 @@
                             <input type="text" class="form-control" name="full_name" placeholder="Nombre completo">
                             <input type="email" class="form-control" name="email" placeholder="Correo electrónico">
                             <input type="password" class="form-control" name="password" placeholder="Nueva contraseña (opcional)" minlength="6">
-                            <input type="text" class="form-control" name="roles" placeholder="Roles (separados por coma)">
+                            <div>
+                                <p class="form-label mb-1">Roles asignados</p>
+                                <div class="border rounded p-3">
+                                    {% for role in role_options %}
+                                    <div class="form-check">
+                                        <input class="form-check-input edit-role" type="checkbox" value="{{ role.value }}" id="editRole{{ loop.index }}">
+                                        <label class="form-check-label" for="editRole{{ loop.index }}">{{ role.label }}</label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="editUserActive" name="is_active">
                                 <label class="form-check-label" for="editUserActive">Cuenta activa</label>
@@ -92,6 +113,7 @@
         const editForm = document.getElementById('editUserForm');
         const deleteBtn = document.getElementById('deleteUserBtn');
         const editActive = document.getElementById('editUserActive');
+        const DEFAULT_ROLE = 'member';
         let selectedUser = null;
 
         function showAlert(message, variant = 'info') {
@@ -104,9 +126,21 @@
             alertBox.classList.add('d-none');
         }
 
-        function toRoleArray(value) {
-            if (!value) return [];
-            return value.split(',').map((item) => item.trim()).filter(Boolean);
+        function getCheckedRoles(selector) {
+            return Array.from(document.querySelectorAll(selector))
+                .filter((checkbox) => checkbox.checked)
+                .map((checkbox) => checkbox.value);
+        }
+
+        function setCheckedRoles(selector, roles) {
+            const values = roles && roles.length ? roles : [DEFAULT_ROLE];
+            document.querySelectorAll(selector).forEach((checkbox) => {
+                checkbox.checked = values.includes(checkbox.value);
+            });
+        }
+
+        function resetCreateRoles() {
+            setCheckedRoles('.create-role', [DEFAULT_ROLE]);
         }
 
         function fillEditForm(user) {
@@ -115,7 +149,7 @@
                 editForm.full_name.value = '';
                 editForm.email.value = '';
                 editForm.password.value = '';
-                editForm.roles.value = '';
+                setCheckedRoles('.edit-role', [DEFAULT_ROLE]);
                 editActive.checked = true;
                 selectedUser = null;
                 return;
@@ -124,7 +158,7 @@
             editForm.full_name.value = user.full_name || '';
             editForm.email.value = user.email || '';
             editForm.password.value = '';
-            editForm.roles.value = (user.roles || []).join(', ');
+            setCheckedRoles('.edit-role', user.roles || [DEFAULT_ROLE]);
             editActive.checked = user.is_active !== false;
             selectedUser = user.username;
         }
@@ -159,9 +193,9 @@
         createForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             const formData = new FormData(createForm);
-            let roles = toRoleArray(formData.get('roles'));
+            let roles = getCheckedRoles('.create-role');
             if (!roles.length) {
-                roles = ['member'];
+                roles = [DEFAULT_ROLE];
             }
             const payload = {
                 username: formData.get('username'),
@@ -177,6 +211,7 @@
                     body: JSON.stringify(payload),
                 });
                 createForm.reset();
+                resetCreateRoles();
                 showAlert('Usuario creado correctamente.', 'success');
                 loadUsers();
             } catch (error) {
@@ -200,9 +235,9 @@
             if (newPassword) {
                 payload.password = newPassword;
             }
-            const rolesList = toRoleArray(formData.get('roles'));
-            if (rolesList.length) {
-                payload.roles = rolesList;
+            const roles = getCheckedRoles('.edit-role');
+            if (roles.length) {
+                payload.roles = roles;
             }
             try {
                 await window.LPMAuth.authFetch(`/admin/api/users/${encodeURIComponent(selectedUser)}`, {
@@ -239,10 +274,11 @@
 
         refreshBtn.addEventListener('click', loadUsers);
 
-        if (window.LPMAuth) {
-            window.LPMAuth.requireAuth();
+        if (window.LPMAuth && !window.LPMAuth.isAuthenticated()) {
+            window.location.href = `${window.LPM_AUTH_LOGIN_URL}?next=${encodeURIComponent(window.location.pathname)}`;
+        } else {
+            loadUsers();
         }
-        loadUsers();
     </script>
 </body>
 </html>

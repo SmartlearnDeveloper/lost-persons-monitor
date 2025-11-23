@@ -82,6 +82,13 @@ AUTH_SERVICE_LOGIN_URL = os.environ.get("AUTH_SERVICE_LOGIN_URL", f"{AUTH_SERVIC
 APP_LOGIN_URL = os.environ.get("APP_LOGIN_URL", "/login")
 AUTH_COOKIE_NAME = os.environ.get("AUTH_COOKIE_NAME", "lpm_token")
 AUTH_COOKIE_MAX_AGE = int(os.environ.get("AUTH_COOKIE_MAX_AGE", "3600"))
+ROLE_OPTIONS = [
+    {"value": "member", "label": "Miembro"},
+    {"value": "reporter", "label": "Reportero"},
+    {"value": "analyst", "label": "Analista"},
+    {"value": "coordinator", "label": "Coordinador"},
+    {"value": "admin", "label": "Administrador"},
+]
 
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 
@@ -360,6 +367,7 @@ def _template_context(request: Request, current_user: Optional[TokenPayload] = N
         "current_user": current_user,
         "auth_login_url": APP_LOGIN_URL,
         "auth_base_url": AUTH_PUBLIC_BASE_URL,
+        "role_options": ROLE_OPTIONS,
     }
     base.update(kwargs)
     return base
