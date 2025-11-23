@@ -2061,19 +2061,11 @@ def case_responsible_catalog(
 
 @app.get("/admin/users", response_class=HTMLResponse)
 async def admin_users_page(request: Request):
-    current_user = _ensure_ui_permissions(request, ["manage_users"])
-    if not current_user:
-        return _login_redirect(request)
     token = _proxy_auth_header(request)
-    try:
-        data = _auth_service_request("GET", "/auth/users", token=token)
-    except HTTPException as exc:
-        if exc.status_code in {401, 403}:
-            return _login_redirect(request)
-        raise
+    data = _auth_service_request("GET", "/auth/users", token=token)
     return templates.TemplateResponse(
         "admin_users.html",
-        _template_context(request, users=data or [], current_user=current_user),
+        _template_context(request, users=data or [], current_user=_current_user_optional(request)),
     )
 
 
