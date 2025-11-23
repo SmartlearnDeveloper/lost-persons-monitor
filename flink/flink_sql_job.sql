@@ -1,3 +1,5 @@
+SET 'execution.attached' = 'false';
+
 -- #############################################################################
 -- # 1. Definir la tabla de origen (Kafka) con el esquema anidado correcto
 -- #############################################################################
@@ -10,7 +12,7 @@ CREATE TABLE persons_lost_stream (
 ) WITH (
     'connector' = 'kafka',
     'topic' = 'lost_persons_server.lost_persons_db.persons_lost',
-    'properties.bootstrap.servers' = 'kafka:29092',
+    'properties.bootstrap.servers' = 'kafka:9092',
     'properties.group.id' = 'flink-group',
     'format' = 'json',
     'scan.startup.mode' = 'earliest-offset'

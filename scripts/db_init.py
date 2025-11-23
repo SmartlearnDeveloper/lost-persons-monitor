@@ -1,26 +1,22 @@
-import os
-import json
 import time
+import argparse
+import os
+from pathlib import Path
+import sys
 from sqlalchemy import create_engine, text, Column, Integer, String, Date, DateTime, Enum, ForeignKey, Boolean
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from mysql.connector import errors as mysql_errors
 import datetime
 import enum
 
-# --- Cargar configuración de forma robusta ---
-# Construye la ruta al archivo de configuración relativa a la ubicación de este script
-script_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(script_dir, '..', 'config.json')
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
-with open(config_path, 'r') as f:
-    config = json.load(f)
+from config_loader import build_database_url, build_root_admin_url, get_db_settings
 
-DB_USER = config['db_user']
-DB_PASSWORD = config['db_password']
-DB_HOST = config['db_host']
-DB_PORT = config['db_port']
-DB_NAME = config['db_name']
+DB_SETTINGS = get_db_settings()
 
 # --- Definición del ORM con SQLAlchemy ---
 Base = declarative_base()
@@ -104,22 +100,24 @@ class CaseAction(Base):
 
     case = relationship("Case", back_populates="actions")
 
-def init_db():
+def init_db(reset_database: bool = False):
     """
     Inicializa la base de datos y crea las tablas si no existen.
     Intenta conectarse varias veces antes de fallar.
     """
     # Conexión sin especificar la base de datos para poder crearla
-    engine_admin_url = f"mysql+mysqlconnector://root:rootpassword@{DB_HOST}:{DB_PORT}"
-    engine_admin = create_engine(engine_admin_url)
+    engine_admin = create_engine(build_root_admin_url())
 
     max_retries = 10
     retries = 0
     while retries < max_retries:
         try:
             with engine_admin.connect() as connection:
-                connection.execute(text(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}"))
-                print(f"Base de datos '{DB_NAME}' asegurada.")
+                if reset_database:
+                    connection.execute(text(f"DROP DATABASE IF EXISTS {DB_SETTINGS['name']}"))
+                    print(f"Base de datos '{DB_SETTINGS['name']}' eliminada.")
+                connection.execute(text(f"CREATE DATABASE IF NOT EXISTS {DB_SETTINGS['name']}"))
+                print(f"Base de datos '{DB_SETTINGS['name']}' asegurada.")
             break
         except (OperationalError, SQLAlchemyError, mysql_errors.Error) as e:
             print(f"Error de conexión a MySQL: {e}. Reintentando en 5 segundos...")
@@ -131,8 +129,7 @@ def init_db():
         return
 
     # Conexión a la base de datos específica para crear las tablas
-    db_url = f"mysql+mysqlconnector://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    engine = create_engine(db_url)
+    engine = create_engine(build_database_url())
     
     print("Creando tablas en la base de datos...")
     retries = 0
@@ -150,5 +147,13 @@ def init_db():
         print("No se pudieron crear las tablas después de varios intentos. Abortando.")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Inicializa o reinicia la base de datos del sistema.")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Elimina la base de datos antes de recrearla (deja todo en blanco).",
+    )
+    args = parser.parse_args()
+    reset_flag = args.reset or os.getenv("RESET_DB", "").lower() in {"1", "true", "yes"}
     print("Iniciando script de preparación de la base de datos...")
-    init_db()
+    init_db(reset_database=reset_flag)

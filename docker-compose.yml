@@ -5,7 +5,7 @@ services:
     image: mysql:8.0
     container_name: mysql_db
     ports:
-      - "33307:3306"
+      - "40110:3306"
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: lost_persons_db
@@ -19,38 +19,58 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - monitor-net
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.3.0
     container_name: zookeeper
     ports:
-      - "32182:2181"
+      - "40115:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
       KAFKA_OPTS: -XX:-UseContainerSupport
+    networks:
+      - monitor-net
 
   kafka:
     image: confluentinc/cp-kafka:7.3.0
     container_name: kafka
     ports:
-      - "19093:9092"
+      - "40120:9092"
     depends_on:
       - zookeeper
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_OPTS: -XX:-UseContainerSupport
+    networks:
+      - monitor-net
+
+  kafka_topic_init:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: kafka_topic_init
+    depends_on:
+      - kafka
+    command:
+      - /bin/sh
+      - -c
+      - >
+        cub kafka-ready -b kafka:9092 1 60 &&
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --replication-factor 1 --partitions 1 --topic lost_persons_server.lost_persons_db.persons_lost;
+    networks:
+      - monitor-net
 
   connect:
     image: debezium/connect:2.1
     container_name: kafka_connect
     ports:
-      - "18084:8083"
+      - "40125:8083"
     depends_on:
       - kafka
       - mysql
@@ -60,26 +80,113 @@ services:
       CONFIG_STORAGE_TOPIC: my_connect_configs
       OFFSET_STORAGE_TOPIC: my_connect_offsets
       STATUS_STORAGE_TOPIC: my_connect_statuses
+    networks:
+      - monitor-net
 
   jobmanager:
     build:
-      context: ./flink
+      context: .
+      dockerfile: flink/Dockerfile
     container_name: flink_jobmanager
+    depends_on:
+      - mysql
+      - kafka_topic_init
     ports:
-      - "18082:8081"
-    command: jobmanager
+      - "40130:8081"
+    command: ["/opt/flink/bin/start_jobmanager_with_sql.sh"]
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
+    networks:
+      - monitor-net
 
   taskmanager:
     build:
-      context: ./flink
+      context: .
+      dockerfile: flink/Dockerfile
     container_name: flink_taskmanager
     depends_on:
       - jobmanager
+    ports:
+      - "40135:6123"
     command: taskmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
+    networks:
+      - monitor-net
+
+  producer:
+    build:
+      context: .
+      dockerfile: producer/Dockerfile
+    container_name: producer_service
+    depends_on:
+      - mysql
+    ports:
+      - "40140:58101"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_NAME: lost_persons_db
+    networks:
+      - monitor-net
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: dashboard_service
+    depends_on:
+      - mysql
+      - case_manager
+    ports:
+      - "40145:58102"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_NAME: lost_persons_db
+      CASE_MANAGER_URL: http://case_manager:58103
+      PRODUCER_PUBLIC_URL: http://localhost:40140/report_person/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    networks:
+      - monitor-net
+
+  case_manager:
+    build:
+      context: .
+      dockerfile: case_manager/Dockerfile
+    container_name: case_manager_service
+    depends_on:
+      - mysql
+    ports:
+      - "40150:58103"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_NAME: lost_persons_db
+    networks:
+      - monitor-net
+
+  connector_init:
+    image: curlimages/curl:8.5.0
+    container_name: connector_init
+    depends_on:
+      - connect
+    volumes:
+      - ./debezium-connector.json:/config/debezium-connector.json:ro
+      - ./scripts/register_connector.sh:/register_connector.sh:ro
+    entrypoint: ["/bin/sh", "/register_connector.sh"]
+    networks:
+      - monitor-net
 
 volumes:
   mysql_data:
+
+networks:
+  monitor-net:
+    driver: bridge

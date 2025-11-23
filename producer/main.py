@@ -14,6 +14,8 @@ allowed_origins = [
     "http://127.0.0.1:58102",
     "http://localhost:58101",
     "http://127.0.0.1:58101",
+    "http://localhost:40145",
+    "http://127.0.0.1:40145",
 ]
 
 app.add_middleware(

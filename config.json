@@ -1,7 +1,8 @@
 {
     "db_host": "localhost",
-    "db_port": 33307,
+    "db_port": 40110,
     "db_user": "user",
     "db_password": "password",
-    "db_name": "lost_persons_db"
+    "db_name": "lost_persons_db",
+    "db_root_password": "rootpassword"
 }

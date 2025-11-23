@@ -19,3 +19,7 @@ Thumbs.db
 data/
 *.sqlite
 docker_logs_*.txt
+
+# Maven build
+flink-job/target/
+flink-job/.m2/

@@ -227,6 +227,8 @@
 
             let currentRange = '7d';
             let refreshTimer = null;
+            const WS_RETRY_MS = 5000;
+            let dashboardSocket = null;
 
             async function fetchJson(url) {
                 const response = await fetch(url);
@@ -481,9 +483,23 @@
                 });
             });
 
+            function connectWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+                const socketUrl = `${protocol}://${window.location.host}/ws/dashboard`;
+                dashboardSocket = new WebSocket(socketUrl);
+                dashboardSocket.onmessage = () => refreshDashboard(currentRange);
+                dashboardSocket.onclose = () => {
+                    setTimeout(connectWebSocket, WS_RETRY_MS);
+                };
+                dashboardSocket.onerror = () => {
+                    dashboardSocket.close();
+                };
+            }
+
             highlightRangeButton(currentRange);
             refreshDashboard(currentRange);
             refreshTimer = setInterval(() => refreshDashboard(currentRange), REFRESH_INTERVAL_MS);
+            connectWebSocket();
         });
     </script>
 </body>

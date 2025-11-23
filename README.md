@@ -12,21 +12,43 @@ Lost Persons Monitor is a change-data-capture (CDC) pipeline that ingests lost-p
 4. Install dependencies:  
    `pip install -r producer/requirements.txt`  
    `pip install -r dashboard/requirements.txt`
-5. Start the infrastructure with `docker-compose up -d`.
-6. Launch APIs locally with `uvicorn producer.main:app --reload --host 0.0.0.0 --port 58101` and `uvicorn dashboard.main:app --reload --host 0.0.0.0 --port 58102`.
-   To manage live case records, start the case manager service with `uvicorn case_manager.main:app --reload --host 0.0.0.0 --port 58103`.
-7. Once the stack is healthy, register the Debezium connector:  
-   `curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:18084/connectors/ -d @debezium-connector.json`.
+5. (Optional but recommended) Reset the MySQL schema to a blank slate:  
+   `./scripts/reset_db.sh`  
+   _(Esto inicia solo el contenedor de MySQL, elimina y recrea las tablas para comenzar sin registros.)_
+6. Compile the Flink job (run this whenever you change the streaming logic):  
+   `mvn -f flink-job/pom.xml clean package`
+7. Build and launch the full microservice stack (introduced in `version_2_0_0`):  
+   `docker compose up -d --build`
+8. Wait for the `connector_init` helper to finish (it registers the Debezium connector automatically). _Known issue_: Kafka Connect sometimes takes longer to boot, causing `connector_init` to exit with `curl: (7)`; if the logs show that error, rerun  
+   `docker compose run --rm connector_init` once the `connect` service is healthy.
+9. The JobManager automatically runs the packaged Flink job (`flink run -d /opt/flink/usrlib/lost-persons-job.jar`). Use `docker compose exec jobmanager /opt/flink/bin/flink list` to verify the aggregation job is RUNNING, or run `scripts/run_flink_job.sh` to redeploy manually after rebuilding the jar.
+10. For local-only experiments, you can still start an individual API with uvicorn (e.g., `uvicorn producer.main:app --reload --host 0.0.0.0 --port 58101`), but the recommended workflow is through Docker so each service gets its own containerized runtime.
+
+### Service Port Map
+
+| Service            | Host Port | Container Port |
+|--------------------|-----------|----------------|
+| MySQL              | 40110     | 3306           |
+| Zookeeper          | 40115     | 2181           |
+| Kafka (PLAINTEXT)  | 40120     | 9092           |
+| Kafka Connect      | 40125     | 8083           |
+| Flink JobManager   | 40130     | 8081           |
+| Flink TaskManager* | 40135     | 6123           |
+| Producer API       | 40140     | 58101          |
+| Dashboard API      | 40145     | 58102          |
+| Case Manager API   | 40150     | 58103          |
+
+\* TaskManager port exposure is optional and used primarily for debugging RPC calls.
 
 ## Web Application
 
-- `http://localhost:58102/` — landing page with links to the reporter form, analytics dashboard, and PDF reports.
-- `http://localhost:58102/report` — simple GUI to generate random missing-person entries and post them to the producer API.
-- `http://localhost:58102/dashboard` — real-time charts plus tabular summaries driven by Debezium/Flink aggregates, with direct SQL fallbacks when aggregates are empty.
-- `http://localhost:58102/reports` — catalog of downloadable PDF reports with filterable inputs.
-- `http://localhost:58102/cases` — UI para crear/actualizar casos, registrar acciones y monitorear KPIs operativos.
+- `http://localhost:40145/` — landing page with links to the reporter form, analytics dashboard, and PDF reports.
+- `http://localhost:40145/report` — simple GUI to generate random missing-person entries and post them to the producer API.
+- `http://localhost:40145/dashboard` — charts refreshing in real time via WebSockets whenever Debezium ingests a report; data comes from the Flink aggregates with direct SQL fallbacks when aggregates are empty.
+- `http://localhost:40145/reports` — catalog of downloadable PDF reports with filterable inputs.
+- `http://localhost:40145/cases` — UI para crear/actualizar casos, registrar acciones y monitorear KPIs operativos.
 
-The reporter UI issues `POST` requests to `http://localhost:58101/report_person/` (the producer service). A “Generar aleatorio” button pre-fills sample data so dispatch teams can simulate activity rapidly.
+The reporter UI issues `POST` requests to `http://localhost:40140/report_person/` (the producer service). A “Generar aleatorio” button pre-fills sample data so dispatch teams can simulate activity rapidly.
 
 ## PDF Reports
 
@@ -60,10 +82,21 @@ The reporter UI issues `POST` requests to `http://localhost:58101/report_person/
 
 - Start with the nearest `AGENTS.md` file in any directory to see contributor guidance tailored to that service or package. The root `AGENTS.md` outlines project-wide practices, while subdirectories (e.g., `producer/AGENTS.md`, `dashboard/AGENTS.md`) provide focused instructions.
 - Infrastructure diagrams, historical conversations, and additional context remain in `lost-persons-monitor.md`.
+- `scripts/reset_db.sh` deja la base en blanco (cae cualquier esquema previo y vuelve a correr `db_init` dentro del contenedor). Útil antes de demos.
+- `scripts/run_flink_job.sh` es útil si necesitas resubir manualmente el job de Flink después de recompilar el jar.
 
 Refer to service-specific `AGENTS.md` files for detailed testing, deployment, and security practices.
 
 ## Versioning & Releases
 
-- Current release: `version_1_0_0` (see `VERSION`).
-- Release notes live in `RELEASE_NOTES.md` and are updated alongside tags.
+- Current release: `version_2_0_0` (see `VERSION`) — first microservice-based delivery with Dockerized FastAPI services.
+- Previous stable: `version_1_0_0` (monolithic uvicorn processes, documented for reference in release notes).
+- Release notes live in `RELEASE_NOTES.md` and are updated alongside tags. Mention any open investigations (e.g., Debezium automation) when tagging.
+
+## Known Issues (Under Investigation)
+
+- `connector_init` may exit before Kafka Connect is fully online, logging `curl: (7) Failed to connect to connect port 8083`. Re-run `docker compose run --rm connector_init` or manually POST `debezium-connector.json` once `connect` reports healthy. Root cause analysis continues for `version_2_0_0`.
+
+## Validation
+
+After bringing the stack up, run `python scripts/stack_check.py` to hit the key service endpoints (producer, dashboard, case manager, and Kafka Connect). The script exits with a non-zero status if any check fails, making it suitable for CI or quick sanity checks before demos.

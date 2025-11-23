@@ -3,10 +3,13 @@
 ## Project Overview
 - The Flink module defines the streaming topology that consumes Debezium change events from Kafka, aggregates lost-person signals, and writes results into MySQL tables consumed by the dashboard.
 - `flink_sql_job.sql` captures the production job: source definitions, sink tables, and insert statements that compute age groups, gender splits, and hourly counts in near real time.
+- Since `version_2_0_0`, the Flink JobManager/TaskManager ship as Docker services (`flink_jobmanager`, `flink_taskmanager`) within the shared microservice stack.
 
 ## Build & Test Commands
-- Build custom images with `docker compose build jobmanager taskmanager` to package updated SQL or connector JARs.
-- Validate SQL locally using `./bin/sql-client.sh -f /opt/flink/usrlib/flink_sql_job.sql` inside the JobManager container or open an interactive SQL client session for iterative testing.
+- Package the streaming job with `mvn -f flink-job/pom.xml clean package`. This produces `flink-job/target/lost-persons-job.jar`, which the JobManager copies into `/opt/flink/usrlib/`.
+- Build custom images with `docker compose build jobmanager taskmanager` to pick up jar/connectors, then `docker compose up -d jobmanager taskmanager`.
+- The JobManager entrypoint automatically runs `flink run -d /opt/flink/usrlib/lost-persons-job.jar` once the REST endpoint is available. Use `docker compose exec jobmanager /opt/flink/bin/flink list` to confirm the job is RUNNING.
+- To redeploy manually after rebuilding the jar, execute `scripts/run_flink_job.sh`.
 - Keep Debezium and Kafka settings aligned by updating `docker-compose.yml` and `debezium-connector.json` whenever connector properties change.
 
 ## Code Style Guidelines
@@ -27,3 +30,6 @@
 ## Additional Contribution Guidelines
 - Prefix commits with the streaming scope when helpful (e.g., `flink: Add hourly retention aggregate`) and bundle related SQL/Docker changes together.
 - Pull requests must describe state compatibility expectations, checkpoint impacts, and required deploy steps (drain job, build images, redeploy).
+
+## Known Issues
+- Debezium connector automation can fail while Kafka Connect starts, leaving Flink without source data. Always confirm the connector exists (`curl http://localhost:40125/connectors/`) after `docker compose up`; bug triage is underway.

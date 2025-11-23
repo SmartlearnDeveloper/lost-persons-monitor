@@ -1,10 +1,13 @@
 import os
+import json
+import asyncio
+import contextlib
 from collections import Counter
 from datetime import datetime, date, time, timedelta
 from html import escape
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Set
 
 import matplotlib
 
@@ -15,16 +18,18 @@ import pandas as pd
 import httpx
 from fastapi import FastAPI, Depends, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, text
-import json
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER, landscape as landscape_pagesize
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from aiokafka import AIOKafkaConsumer
 
 from dashboard.database import get_db
 from scripts.db_init import (
@@ -45,12 +50,75 @@ BRAND_NAME = "Lost Persons Monitor"
 BRAND_OWNER = "ICM Software Development"
 BRAND_REPORT_FOOTER = f"Reporte generado por el sistema {BRAND_NAME}."
 CASE_MANAGER_URL = os.environ.get("CASE_MANAGER_URL", "http://localhost:58103")
+PRODUCER_PUBLIC_URL = os.environ.get("PRODUCER_PUBLIC_URL", "http://localhost:40140/report_person/")
 CASE_STATUS_VALUES = [status.value for status in CaseStatusEnum]
 SENSITIVE_TERMS: List[dict] = []
 SENSITIVE_INDEX: List[dict] = []
 SEVERITY_RANK = {"alta": 3, "media": 2, "baja": 1}
 PRIORITY_OPTIONS: List[dict] = []
 CASE_ACTION_TYPES: List[dict] = []
+KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "lost_persons_server.lost_persons_db.persons_lost")
+
+class DashboardSocketManager:
+    def __init__(self) -> None:
+        self.connections: Set[WebSocket] = set()
+        self._lock = asyncio.Lock()
+
+    async def connect(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        async with self._lock:
+            self.connections.add(websocket)
+
+    async def disconnect(self, websocket: WebSocket) -> None:
+        async with self._lock:
+            self.connections.discard(websocket)
+
+    async def broadcast(self, payload: str) -> None:
+        async with self._lock:
+            websockets = list(self.connections)
+        for connection in websockets:
+            try:
+                await connection.send_text(payload)
+            except WebSocketDisconnect:
+                await self.disconnect(connection)
+            except Exception:
+                await self.disconnect(connection)
+
+ws_manager = DashboardSocketManager()
+_consumer_task: Optional[asyncio.Task] = None
+
+
+async def _kafka_listener() -> None:
+    consumer = AIOKafkaConsumer(
+        KAFKA_TOPIC,
+        bootstrap_servers=KAFKA_BOOTSTRAP,
+        group_id="dashboard-realtime",
+        enable_auto_commit=True,
+        auto_offset_reset="latest",
+    )
+    await consumer.start()
+    try:
+        async for _msg in consumer:
+            await ws_manager.broadcast(json.dumps({"event": "refresh"}))
+    finally:
+        await consumer.stop()
+
+
+@app.on_event("startup")
+async def start_background_tasks() -> None:
+    global _consumer_task
+    loop = asyncio.get_event_loop()
+    _consumer_task = loop.create_task(_kafka_listener())
+
+
+@app.on_event("shutdown")
+async def stop_background_tasks() -> None:
+    global _consumer_task
+    if _consumer_task:
+        _consumer_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _consumer_task
 
 
 def _load_sensitive_terms() -> None:
@@ -1711,10 +1779,9 @@ async def read_reports(request: Request):
 @app.get("/report", response_class=HTMLResponse)
 async def read_report(request: Request):
     """Serve the interactive form to submit new lost-person reports."""
-    producer_endpoint = "http://localhost:58101/report_person/"
     return templates.TemplateResponse(
         "tester.html",
-        _template_context(request, producer_endpoint=producer_endpoint),
+        _template_context(request, producer_endpoint=PRODUCER_PUBLIC_URL),
     )
 
 
@@ -1722,6 +1789,18 @@ async def read_report(request: Request):
 async def manage_cases(request: Request):
     """UI for case management operations."""
     return templates.TemplateResponse("cases.html", _template_context(request))
+
+
+@app.websocket("/ws/dashboard")
+async def dashboard_ws(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        await ws_manager.disconnect(websocket)
 
 
 @app.get("/reports/operational-alerts", response_class=HTMLResponse)

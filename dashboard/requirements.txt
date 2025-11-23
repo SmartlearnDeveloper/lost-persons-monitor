@@ -10,3 +10,4 @@ numpy
 reportlab
 httpx
 python-multipart
+aiokafka
