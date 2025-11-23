@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administrar usuarios · {{ brand_name }}</title>
+    <title>Administración de usuarios · {{ brand_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
@@ -11,274 +11,60 @@
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
                 <h1 class="h4 mb-1">Administración de usuarios</h1>
-                <p class="text-muted mb-0">Gestiona cuentas, roles y contraseñas.</p>
+                <p class="text-muted mb-0">Gestiona cuentas, roles y accesos.</p>
             </div>
-            <a href="/" class="btn btn-outline-secondary btn-sm">Regresar al inicio</a>
-        </div>
-
-        <div id="usersAlert" class="alert d-none" role="alert"></div>
-
-        <div class="row g-4">
-            <div class="col-lg-7">
-                <div class="card shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h2 class="h6 mb-0">Usuarios registrados</h2>
-                            <button class="btn btn-sm btn-outline-primary" id="refreshUsersBtn">Actualizar</button>
-                        </div>
-                        <div class="table-responsive" style="max-height: 420px;">
-                            <table class="table table-sm align-middle" id="usersTable">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Usuario</th>
-                                        <th>Nombre</th>
-                                        <th>Email</th>
-                                        <th>Roles</th>
-                                        <th>Estado</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-5">
-                <div class="card shadow-sm mb-4">
-                    <div class="card-body">
-                        <h2 class="h6">Crear usuario</h2>
-                        <form id="createUserForm" class="vstack gap-3">
-                            <input type="text" class="form-control" name="username" placeholder="Usuario" required minlength="3">
-                            <input type="text" class="form-control" name="full_name" placeholder="Nombre completo">
-                            <input type="email" class="form-control" name="email" placeholder="Correo electrónico">
-                            <input type="password" class="form-control" name="password" placeholder="Contraseña" required minlength="6">
-                            <div>
-                                <p class="form-label mb-1">Roles</p>
-                                <div class="border rounded p-3">
-                                    {% for role in role_options %}
-                                    <div class="form-check">
-                                        <input class="form-check-input create-role" type="checkbox" value="{{ role.value }}" id="createRole{{ loop.index }}" {% if role.value == 'member' %}checked{% endif %}>
-                                        <label class="form-check-label" for="createRole{{ loop.index }}">{{ role.label }}</label>
-                                    </div>
-                                    {% endfor %}
-                                    <div class="text-muted small mt-2">Si no seleccionas roles, se asignará «Miembro» automáticamente.</div>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100">Crear</button>
-                        </form>
-                    </div>
-                </div>
-                <div class="card shadow-sm">
-                    <div class="card-body">
-                        <h2 class="h6">Editar usuario</h2>
-                        <form id="editUserForm" class="vstack gap-3">
-                            <input type="text" class="form-control" name="username" placeholder="Usuario" readonly>
-                            <input type="text" class="form-control" name="full_name" placeholder="Nombre completo">
-                            <input type="email" class="form-control" name="email" placeholder="Correo electrónico">
-                            <input type="password" class="form-control" name="password" placeholder="Nueva contraseña (opcional)" minlength="6">
-                            <div>
-                                <p class="form-label mb-1">Roles asignados</p>
-                                <div class="border rounded p-3">
-                                    {% for role in role_options %}
-                                    <div class="form-check">
-                                        <input class="form-check-input edit-role" type="checkbox" value="{{ role.value }}" id="editRole{{ loop.index }}">
-                                        <label class="form-check-label" for="editRole{{ loop.index }}">{{ role.label }}</label>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="editUserActive" name="is_active">
-                                <label class="form-check-label" for="editUserActive">Cuenta activa</label>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-primary flex-grow-1">Guardar cambios</button>
-                                <button type="button" class="btn btn-outline-danger" id="deleteUserBtn">Desactivar</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+            <div class="d-flex gap-2">
+                <a href="/admin/users/create" class="btn btn-primary btn-sm">Nuevo usuario</a>
+                <a href="/" class="btn btn-outline-secondary btn-sm">Regresar al inicio</a>
             </div>
         </div>
+
+        {% if users %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Nombre</th>
+                        <th>Email</th>
+                        <th>Roles</th>
+                        <th>Estado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.full_name or '-' }}</td>
+                        <td>{{ user.email or '-' }}</td>
+                        <td>
+                            {% for role in user.roles %}
+                                <span class="badge text-bg-light">{{ role }}</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge text-bg-success">Activo</span>
+                            {% else %}
+                            <span class="badge text-bg-danger">Inactivo</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" href="/admin/users/{{ user.username }}/edit">Editar</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="/admin/users/{{ user.username }}/reset-password">Reiniciar clave</a>
+                            <a class="btn btn-sm btn-outline-danger" href="/admin/users/{{ user.username }}/toggle">{{ 'Desactivar' if user.is_active else 'Activar' }}</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">No existen usuarios registrados.</div>
+        {% endif %}
     </div>
-
-    <script>window.LPM_AUTH_LOGIN_URL = "{{ auth_login_url }}";</script>
-    <script src="/static/js/auth.js"></script>
-    <script>
-        const usersTableBody = document.querySelector('#usersTable tbody');
-        const refreshBtn = document.getElementById('refreshUsersBtn');
-        const alertBox = document.getElementById('usersAlert');
-        const createForm = document.getElementById('createUserForm');
-        const editForm = document.getElementById('editUserForm');
-        const deleteBtn = document.getElementById('deleteUserBtn');
-        const editActive = document.getElementById('editUserActive');
-        const DEFAULT_ROLE = 'member';
-        let selectedUser = null;
-
-        function showAlert(message, variant = 'info') {
-            alertBox.textContent = message;
-            alertBox.className = `alert alert-${variant}`;
-            alertBox.classList.remove('d-none');
-        }
-
-        function clearAlert() {
-            alertBox.classList.add('d-none');
-        }
-
-        function getCheckedRoles(selector) {
-            return Array.from(document.querySelectorAll(selector))
-                .filter((checkbox) => checkbox.checked)
-                .map((checkbox) => checkbox.value);
-        }
-
-        function setCheckedRoles(selector, roles) {
-            const values = roles && roles.length ? roles : [DEFAULT_ROLE];
-            document.querySelectorAll(selector).forEach((checkbox) => {
-                checkbox.checked = values.includes(checkbox.value);
-            });
-        }
-
-        function resetCreateRoles() {
-            setCheckedRoles('.create-role', [DEFAULT_ROLE]);
-        }
-
-        function fillEditForm(user) {
-            if (!user) {
-                editForm.username.value = '';
-                editForm.full_name.value = '';
-                editForm.email.value = '';
-                editForm.password.value = '';
-                setCheckedRoles('.edit-role', [DEFAULT_ROLE]);
-                editActive.checked = true;
-                selectedUser = null;
-                return;
-            }
-            editForm.username.value = user.username;
-            editForm.full_name.value = user.full_name || '';
-            editForm.email.value = user.email || '';
-            editForm.password.value = '';
-            setCheckedRoles('.edit-role', user.roles || [DEFAULT_ROLE]);
-            editActive.checked = user.is_active !== false;
-            selectedUser = user.username;
-        }
-
-        function renderUsers(users) {
-            usersTableBody.innerHTML = '';
-            users.forEach((user) => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${user.username}</td>
-                    <td>${user.full_name || '-'}</td>
-                    <td>${user.email || '-'}</td>
-                    <td><span class="badge text-bg-light">${(user.roles || []).join('</span> <span class="badge text-bg-light">') || '-'}</span></td>
-                    <td>${user.is_active === false ? '<span class="badge text-bg-danger">Inactivo</span>' : '<span class="badge text-bg-success">Activo</span>'}</td>
-                    <td><button class="btn btn-sm btn-outline-primary" data-user="${user.username}">Editar</button></td>
-                `;
-                row.querySelector('button').addEventListener('click', () => fillEditForm(user));
-                usersTableBody.appendChild(row);
-            });
-        }
-
-        async function loadUsers() {
-            try {
-                const data = await window.LPMAuth.authJson('/admin/api/users');
-                renderUsers(data.items || data || []);
-                clearAlert();
-            } catch (error) {
-                showAlert(error.message || 'No fue posible cargar usuarios', 'danger');
-            }
-        }
-
-        createForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const formData = new FormData(createForm);
-            let roles = getCheckedRoles('.create-role');
-            if (!roles.length) {
-                roles = [DEFAULT_ROLE];
-            }
-            const payload = {
-                username: formData.get('username'),
-                full_name: formData.get('full_name') || null,
-                email: formData.get('email') || null,
-                password: formData.get('password'),
-                roles,
-            };
-            try {
-                await window.LPMAuth.authFetch('/admin/api/users', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                createForm.reset();
-                resetCreateRoles();
-                showAlert('Usuario creado correctamente.', 'success');
-                loadUsers();
-            } catch (error) {
-                showAlert(error.message || 'No fue posible crear el usuario', 'danger');
-            }
-        });
-
-        editForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            if (!selectedUser) {
-                showAlert('Selecciona un usuario para editar.', 'warning');
-                return;
-            }
-            const formData = new FormData(editForm);
-            const payload = {
-                full_name: formData.get('full_name') || null,
-                email: formData.get('email') || null,
-                is_active: editActive.checked,
-            };
-            const newPassword = formData.get('password');
-            if (newPassword) {
-                payload.password = newPassword;
-            }
-            const roles = getCheckedRoles('.edit-role');
-            if (roles.length) {
-                payload.roles = roles;
-            }
-            try {
-                await window.LPMAuth.authFetch(`/admin/api/users/${encodeURIComponent(selectedUser)}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                showAlert('Usuario actualizado correctamente.', 'success');
-                loadUsers();
-            } catch (error) {
-                showAlert(error.message || 'No fue posible actualizar el usuario', 'danger');
-            }
-        });
-
-        deleteBtn.addEventListener('click', async () => {
-            if (!selectedUser) {
-                showAlert('Selecciona un usuario para desactivar.', 'warning');
-                return;
-            }
-            if (!confirm('¿Deseas desactivar esta cuenta?')) {
-                return;
-            }
-            try {
-                await window.LPMAuth.authFetch(`/admin/api/users/${encodeURIComponent(selectedUser)}`, {
-                    method: 'DELETE',
-                });
-                showAlert('Cuenta desactivada.', 'info');
-                fillEditForm(null);
-                loadUsers();
-            } catch (error) {
-                showAlert(error.message || 'No fue posible desactivar el usuario', 'danger');
-            }
-        });
-
-        refreshBtn.addEventListener('click', loadUsers);
-
-        if (window.LPMAuth && !window.LPMAuth.isAuthenticated()) {
-            window.location.href = `${window.LPM_AUTH_LOGIN_URL}?next=${encodeURIComponent(window.location.pathname)}`;
-        } else {
-            loadUsers();
-        }
-    </script>
 </body>
 </html>
