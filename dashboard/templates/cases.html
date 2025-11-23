@@ -32,36 +32,7 @@
         <div id="casesAlert" class="alert d-none" role="alert"></div>
 
         <div class="row g-4">
-            <div class="col-lg-4">
-                <div class="form-section">
-                    <h2 class="h6 mb-3">Crear nuevo caso</h2>
-                    <form id="createCaseForm" class="row g-3">
-                        <div class="col-12">
-                            <label class="form-label" for="personSelect">Persona</label>
-                            <select id="personSelect" class="form-select" required></select>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="prioritySelect">Prioridad</label>
-                            <select id="prioritySelect" class="form-select">
-                                <option value="">Sin prioridad</option>
-                                {% for option in priority_options %}
-                                <option value="{{ option.value }}">{{ option.label }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="flagPriority" />
-                                <label class="form-check-label" for="flagPriority">Marcar como caso prioritario</label>
-                            </div>
-                        </div>
-                        <div class="col-12">
-                            <button type="submit" class="btn btn-primary w-100">Crear caso</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-            <div class="col-lg-8">
+            <div class="col-12">
                 <div class="card-panel table-wrapper">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div>
@@ -196,10 +167,6 @@
 
         const alertBox = document.getElementById('casesAlert');
         const casesTableBody = document.querySelector('#casesTable tbody');
-        const createForm = document.getElementById('createCaseForm');
-        const personSelect = document.getElementById('personSelect');
-        const prioritySelect = document.getElementById('prioritySelect');
-        const flagPriority = document.getElementById('flagPriority');
         const updateForm = document.getElementById('updateCaseForm');
         const caseIdField = document.getElementById('caseIdField');
         const statusSelect = document.getElementById('statusSelect');
@@ -243,7 +210,6 @@
             }
         }
 
-        populatePrioritySelect(prioritySelect);
         populatePrioritySelect(updatePrioritySelect);
 
         function showAlert(message, variant = 'info') {
@@ -281,17 +247,7 @@
         }
 
         async function refreshPersonData() {
-            const [available, all] = await Promise.all([
-                fetchJson('/persons/options'),
-                fetchJson('/persons/options?include_assigned=true'),
-            ]);
-            personSelect.innerHTML = '<option value="" disabled selected>Selecciona una persona...</option>';
-            available.items.forEach((item) => {
-                const option = document.createElement('option');
-                option.value = item.person_id;
-                option.textContent = item.label;
-                personSelect.appendChild(option);
-            });
+            const all = await fetchJson('/persons/options?include_assigned=true');
             personLabels.clear();
             all.items.forEach((item) => {
                 personLabels.set(String(item.person_id), item.label);
@@ -401,34 +357,6 @@
                 actionsList.innerHTML = `<div class="text-danger">${error.message || 'Error al cargar acciones'}</div>`;
             }
         }
-
-        createForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            clearAlert();
-            const personId = Number(personSelect.value);
-            if (!personId) {
-                showAlert('Selecciona una persona antes de crear el caso.', 'warning');
-                return;
-            }
-            try {
-                await fetchJson(`${CASE_MANAGER_URL}/cases`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        person_id: personId,
-                        priority: prioritySelect.value || null,
-                        is_priority: flagPriority.checked,
-                        status: 'new'
-                    })
-                });
-                showAlert('Caso creado correctamente.', 'success');
-                createForm.reset();
-                populatePrioritySelect(prioritySelect);
-                await Promise.all([loadCases(), refreshPersonData()]);
-            } catch (error) {
-                showAlert(error.message || 'No fue posible crear el caso.', 'danger');
-            }
-        });
 
         updateForm.addEventListener('submit', async (event) => {
             event.preventDefault();
