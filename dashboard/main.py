@@ -78,7 +78,8 @@ KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "lost_persons_server.lost_persons_db.persons_lost")
 AUTH_SERVICE_INTERNAL_URL = os.environ.get("AUTH_SERVICE_URL", "http://auth_service:58104")
 AUTH_PUBLIC_BASE_URL = os.environ.get("AUTH_PUBLIC_URL", "http://localhost:40155")
-AUTH_LOGIN_URL = os.environ.get("AUTH_LOGIN_URL", f"{AUTH_PUBLIC_BASE_URL.rstrip('/')}/auth/login")
+AUTH_SERVICE_LOGIN_URL = os.environ.get("AUTH_SERVICE_LOGIN_URL", f"{AUTH_SERVICE_INTERNAL_URL.rstrip('/')}/auth/login")
+APP_LOGIN_URL = os.environ.get("APP_LOGIN_URL", "/login")
 AUTH_COOKIE_NAME = os.environ.get("AUTH_COOKIE_NAME", "lpm_token")
 AUTH_COOKIE_MAX_AGE = int(os.environ.get("AUTH_COOKIE_MAX_AGE", "3600"))
 
@@ -357,7 +358,7 @@ def _template_context(request: Request, current_user: Optional[TokenPayload] = N
             for value in CASE_STATUS_VALUES
         ],
         "current_user": current_user,
-        "auth_login_url": AUTH_LOGIN_URL,
+        "auth_login_url": APP_LOGIN_URL,
         "auth_base_url": AUTH_PUBLIC_BASE_URL,
     }
     base.update(kwargs)
@@ -1917,7 +1918,7 @@ async def login_submit(
 ):
     next_path = next if next.startswith("/") else "/"
     form_payload = {"username": username, "password": password}
-    auth_url = f"{AUTH_SERVICE_INTERNAL_URL.rstrip('/')}/auth/login"
+    auth_url = AUTH_SERVICE_LOGIN_URL
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(auth_url, data=form_payload)
