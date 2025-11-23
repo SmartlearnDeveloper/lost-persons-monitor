@@ -49,6 +49,7 @@ class CaseAction(BaseModel):
     action_type: str
     notes: Optional[str]
     actor: Optional[str]
+    responsible_name: Optional[str]
     metadata_json: Optional[str]
     created_at: datetime
 

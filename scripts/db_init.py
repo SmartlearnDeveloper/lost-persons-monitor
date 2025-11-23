@@ -102,6 +102,7 @@ class CaseAction(Base):
     action_type = Column(String(100), nullable=False)
     notes = Column(String(2000))
     actor = Column(String(200))
+    responsible_name = Column(String(200))
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
     metadata_json = Column(String(2000))
 

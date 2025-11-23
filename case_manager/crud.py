@@ -127,11 +127,18 @@ def create_case_action(
     actor: Optional[str],
     metadata_json: Optional[str],
 ) -> CaseAction:
+    current_responsible = (
+        db.query(CaseResponsibleHistory)
+        .filter(CaseResponsibleHistory.case_id == case.case_id)
+        .order_by(CaseResponsibleHistory.assigned_at.desc())
+        .first()
+    )
     action = CaseAction(
         case_id=case.case_id,
         action_type=action_type,
         notes=notes,
         actor=actor,
+        responsible_name=current_responsible.responsible_name if current_responsible else None,
         metadata_json=metadata_json,
     )
     db.add(action)

@@ -1955,7 +1955,7 @@ def case_pdf_report(case_id: int, db: Session = Depends(get_db)):
                 action_date,
                 label,
                 action.get("notes") or "Sin notas",
-                action.get("actor") or "N/A",
+                action.get("responsible_name") or "Sin asignar",
             ]
         )
     actions_table = Table(actions_rows, colWidths=[110, 110, 200, 110])

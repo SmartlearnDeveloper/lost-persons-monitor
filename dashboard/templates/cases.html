@@ -434,7 +434,8 @@
                             <strong>${actionLabel}</strong>
                             <span class="text-muted small">${formatDate(action.created_at)}</span>
                         </div>
-                        <div class="small text-muted">${action.actor || 'N/A'}</div>
+                        <div class="small text-muted">Responsable: ${action.responsible_name || 'Sin asignar'}</div>
+                        <div class="small text-muted">Registrado por: ${action.actor || 'N/A'}</div>
                         <p class="mb-0">${action.notes || 'Sin notas'}</p>
                     `;
                     actionsList.appendChild(item);
