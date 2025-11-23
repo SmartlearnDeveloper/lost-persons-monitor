@@ -2019,28 +2019,50 @@ def case_pdf_report(
         Spacer(1, 12),
     ]
 
+    table_body_style = ParagraphStyle(
+        "CaseTableBody",
+        parent=styles["BodyText"],
+        fontSize=10,
+        leading=12,
+        spaceAfter=0,
+    )
+    table_header_style = ParagraphStyle(
+        "CaseTableHeader",
+        parent=styles["Heading4"],
+        fontSize=10,
+        leading=12,
+        textColor=colors.black,
+        spaceAfter=0,
+    )
+
+    def _table_cell(value: Optional[str], header: bool = False) -> Paragraph:
+        text = value if value not in (None, "") else "-"
+        return Paragraph(escape(str(text)), table_header_style if header else table_body_style)
+
     case_rows = [
-        ["ID de caso", f"#{case.case_id}"],
-        ["Persona", person_name],
-        ["Género", gender_label],
-        ["Edad", getattr(person, "age", None) or "Sin registro"],
-        ["Estado", CASE_STATUS_LABELS.get(case.status.value, case.status.value)],
-        ["Prioridad", PRIORITY_LABELS.get(case.priority, case.priority or "Sin prioridad")],
-        ["¿Prioritario?", "Sí" if case.is_priority else "No"],
-        ["Reportado", _format_datetime(case.reported_at)],
-        ["Resuelto", _format_datetime(case.resolved_at)],
-        ["Resumen de resolución", case.resolution_summary or "Sin resumen"],
-        ["Ubicación reportada", getattr(person, "lost_location", None) or "Sin registro"],
-        ["Detalles del reporte", getattr(person, "details", None) or "Sin detalles"],
+        [_table_cell("ID de caso", header=True), _table_cell(f"#{case.case_id}")],
+        [_table_cell("Persona", header=True), _table_cell(person_name)],
+        [_table_cell("Género", header=True), _table_cell(gender_label)],
+        [_table_cell("Edad", header=True), _table_cell(getattr(person, "age", None) or "Sin registro")],
+        [_table_cell("Estado", header=True), _table_cell(CASE_STATUS_LABELS.get(case.status.value, case.status.value))],
+        [_table_cell("Prioridad", header=True), _table_cell(PRIORITY_LABELS.get(case.priority, case.priority or "Sin prioridad"))],
+        [_table_cell("¿Prioritario?", header=True), _table_cell("Sí" if case.is_priority else "No")],
+        [_table_cell("Reportado", header=True), _table_cell(_format_datetime(case.reported_at))],
+        [_table_cell("Resuelto", header=True), _table_cell(_format_datetime(case.resolved_at))],
+        [_table_cell("Resumen de resolución", header=True), _table_cell(case.resolution_summary or "Sin resumen")],
+        [_table_cell("Ubicación reportada", header=True), _table_cell(getattr(person, "lost_location", None) or "Sin registro")],
+        [_table_cell("Detalles del reporte", header=True), _table_cell(getattr(person, "details", None) or "Sin detalles")],
     ]
     case_table = Table(case_rows, colWidths=[170, 360])
     case_table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#e2e8f0")),
                 ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#94a3b8")),
                 ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("WORDWRAP", (0, 0), (-1, -1), None),
             ]
         )
     )
@@ -2048,7 +2070,12 @@ def case_pdf_report(
     story.append(Spacer(1, 16))
 
     story.append(Paragraph("Historial de responsables", styles["Heading2"]))
-    responsibles_rows = [["Fecha", "Responsable", "Notas", "Asignado por"]]
+    responsibles_rows = [[
+        _table_cell("Fecha", header=True),
+        _table_cell("Responsable", header=True),
+        _table_cell("Notas", header=True),
+        _table_cell("Asignado por", header=True),
+    ]]
     for entry in responsibles:
         assigned_at = entry.get("assigned_at")
         assigned_ts = "-"
@@ -2059,10 +2086,10 @@ def case_pdf_report(
                 assigned_ts = assigned_at
         responsibles_rows.append(
             [
-                assigned_ts,
-                entry.get("responsible_name") or "Sin nombre",
-                entry.get("notes") or "Sin notas",
-                entry.get("assigned_by") or "N/A",
+                _table_cell(assigned_ts),
+                _table_cell(entry.get("responsible_name") or "Sin nombre"),
+                _table_cell(entry.get("notes") or "Sin notas"),
+                _table_cell(entry.get("assigned_by") or "N/A"),
             ]
         )
     responsibles_table = Table(responsibles_rows, colWidths=[110, 160, 200, 80])
@@ -2074,6 +2101,7 @@ def case_pdf_report(
                 ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#94a3b8")),
                 ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("WORDWRAP", (0, 0), (-1, -1), None),
             ]
         )
     )
@@ -2081,7 +2109,12 @@ def case_pdf_report(
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("Historial de acciones", styles["Heading2"]))
-    actions_rows = [["Fecha", "Tipo", "Notas", "Responsable"]]
+    actions_rows = [[
+        _table_cell("Fecha", header=True),
+        _table_cell("Tipo", header=True),
+        _table_cell("Notas", header=True),
+        _table_cell("Responsable", header=True),
+    ]]
     for action in actions:
         label = next(
             (item["label"] for item in CASE_ACTION_TYPES if item["value"] == action.get("action_type")),
@@ -2096,10 +2129,10 @@ def case_pdf_report(
                 action_date = created_at
         actions_rows.append(
             [
-                action_date,
-                label,
-                action.get("notes") or "Sin notas",
-                action.get("responsible_name") or "Sin asignar",
+                _table_cell(action_date),
+                _table_cell(label),
+                _table_cell(action.get("notes") or "Sin notas"),
+                _table_cell(action.get("responsible_name") or "Sin asignar"),
             ]
         )
     actions_table = Table(actions_rows, colWidths=[110, 110, 200, 110])
@@ -2111,6 +2144,7 @@ def case_pdf_report(
                 ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#94a3b8")),
                 ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("WORDWRAP", (0, 0), (-1, -1), None),
             ]
         )
     )
