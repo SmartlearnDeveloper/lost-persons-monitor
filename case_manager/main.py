@@ -162,6 +162,11 @@ def add_responsible(case_id: int, payload: schemas.CaseResponsibleCreate, db: Se
     return entry
 
 
+@app.get("/responsibles/catalog", response_model=list[schemas.ResponsibleContact])
+def responsible_catalog(db: Session = Depends(get_db)):
+    return crud.list_responsible_contacts(db)
+
+
 @app.get("/cases/stats/summary", response_model=schemas.CaseSummary)
 def summary_stats(db: Session = Depends(get_db)):
     data = crud.get_cases_summary(db)

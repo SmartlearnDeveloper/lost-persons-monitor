@@ -90,6 +90,15 @@ class CaseResponsible(CaseResponsibleBase):
         from_attributes = True
 
 
+class ResponsibleContact(BaseModel):
+    contact_id: int
+    full_name: str
+    role: str
+
+    class Config:
+        from_attributes = True
+
+
 class CaseSummary(BaseModel):
     total_cases: int
     new_cases: int

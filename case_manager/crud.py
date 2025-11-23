@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy import func, and_, or_, text
 from sqlalchemy.orm import Session
 
-from scripts.db_init import Case, CaseAction, CaseStatusEnum, CaseResponsibleHistory, PersonLost
+from scripts.db_init import Case, CaseAction, CaseStatusEnum, CaseResponsibleHistory, PersonLost, ResponsibleContact
 
 
 PENDING_STATUSES = {CaseStatusEnum.NEW, CaseStatusEnum.IN_PROGRESS}
@@ -167,6 +167,14 @@ def create_case_responsible(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+def list_responsible_contacts(db: Session) -> List[ResponsibleContact]:
+    return (
+        db.query(ResponsibleContact)
+        .order_by(ResponsibleContact.role.asc(), ResponsibleContact.full_name.asc())
+        .all()
+    )
 
 
 def list_case_actions(db: Session, *, case_id: int) -> List[CaseAction]:

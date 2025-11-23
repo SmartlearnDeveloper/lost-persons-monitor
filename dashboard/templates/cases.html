@@ -160,15 +160,11 @@
             <h5>Asignar responsable</h5>
             <div class="mb-3">
                 <label for="responsibleSelect" class="form-label">Selecciona responsable</label>
-                <select id="responsibleSelect" class="form-select">
-                    {% for option in responsible_options %}
-                    <option value="{{ option.value }}">{{ option.label }}</option>
-                    {% endfor %}
-                </select>
+                <select id="responsibleSelect" class="form-select"></select>
             </div>
             <div class="mb-3">
                 <label for="responsibleAssignedBy" class="form-label">Asignado por</label>
-                <input id="responsibleAssignedBy" type="text" class="form-control" placeholder="Nombre del asignador (opcional)" />
+                <select id="responsibleAssignedBy" class="form-select"></select>
             </div>
             <div class="mb-3">
                 <label for="responsibleNotes" class="form-label">Notas</label>
@@ -235,6 +231,7 @@
         let currentActionCaseId = null;
         let currentResponsibleCaseId = null;
         const personLabels = new Map();
+        let responsibleCatalog = [];
 
         function populatePrioritySelect(selectElement, selectedValue = '') {
             selectElement.innerHTML = '';
@@ -259,6 +256,35 @@
         }
 
         populatePrioritySelect(updatePrioritySelect);
+
+        function populateResponsibleOptions() {
+            const createOption = (value, label, selected = false) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                if (selected) option.selected = true;
+                return option;
+            };
+            responsibleSelect.innerHTML = '';
+            responsibleAssignedBy.innerHTML = '';
+            responsibleSelect.appendChild(createOption('', 'Selecciona...', true));
+            responsibleAssignedBy.appendChild(createOption('', 'Selecciona...', true));
+            responsibleCatalog.forEach((entry) => {
+                const label = `${entry.full_name} (${entry.role})`;
+                responsibleSelect.appendChild(createOption(entry.full_name, label));
+                responsibleAssignedBy.appendChild(createOption(entry.full_name, label));
+            });
+        }
+
+        async function loadResponsibleCatalog() {
+            try {
+                const data = await fetchJson('/case-responsibles/catalog');
+                responsibleCatalog = data.items || [];
+                populateResponsibleOptions();
+            } catch (error) {
+                showAlert('No fue posible cargar el catálogo de responsables.', 'danger');
+            }
+        }
 
         function showAlert(message, variant = 'info') {
             alertBox.textContent = message;
@@ -560,6 +586,10 @@
                 showAlert('Selecciona un caso antes de asignar un responsable.', 'warning');
                 return;
             }
+            if (!responsibleSelect.value) {
+                showAlert('Selecciona un responsable de la lista.', 'warning');
+                return;
+            }
             try {
                 await fetchJson(`${CASE_MANAGER_URL}/cases/${currentResponsibleCaseId}/responsibles`, {
                     method: 'POST',
@@ -580,6 +610,7 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             try {
+                await loadResponsibleCatalog();
                 await refreshPersonData();
                 await loadCases();
                 resetSelectionForm();

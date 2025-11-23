@@ -1,14 +1,15 @@
 import time
 import argparse
 import os
+import random
 from pathlib import Path
 import sys
-from sqlalchemy import create_engine, text, Column, Integer, String, Date, DateTime, Enum, ForeignKey, Boolean
-from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from mysql.connector import errors as mysql_errors
 import datetime
 import enum
+from sqlalchemy import create_engine, text, Column, Integer, String, Date, DateTime, Enum, ForeignKey, Boolean
+from sqlalchemy.orm import declarative_base, relationship, Session
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from mysql.connector import errors as mysql_errors
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -118,6 +119,14 @@ class CaseResponsibleHistory(Base):
 
     case = relationship("Case", back_populates="responsibles")
 
+
+class ResponsibleContact(Base):
+    __tablename__ = 'responsible_contacts'
+    contact_id = Column(Integer, primary_key=True, autoincrement=True)
+    full_name = Column(String(200), nullable=False)
+    role = Column(String(200), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+
 def init_db(reset_database: bool = False):
     """
     Inicializa la base de datos y crea las tablas si no existen.
@@ -163,6 +172,32 @@ def init_db(reset_database: bool = False):
 
     if retries == max_retries:
         print("No se pudieron crear las tablas después de varios intentos. Abortando.")
+        return
+
+    _seed_responsible_contacts(engine)
+
+
+def _seed_responsible_contacts(engine) -> None:
+    roles = [
+        "Coordinador General",
+        "Líder Zona Norte",
+        "Líder Zona Centro",
+        "Líder Zona Sur",
+        "Supervisor de Campo",
+        "Analista de Operaciones",
+    ]
+    first_names = ["Ana", "Bruno", "Camila", "Daniel", "Elena", "Fabio", "Gabriela", "Hugo", "Iván", "Julia"]
+    last_names = ["Ríos", "Serrano", "López", "Medina", "Paz", "Izurieta", "Cárdenas", "Delgado", "Salazar", "Morales"]
+    with Session(engine) as session:
+        if session.query(ResponsibleContact).count() > 0:
+            return
+        random.seed(42)
+        contacts = []
+        for role in roles:
+            name = f"{random.choice(first_names)} {random.choice(last_names)}"
+            contacts.append(ResponsibleContact(full_name=name, role=role))
+        session.add_all(contacts)
+        session.commit()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Inicializa o reinicia la base de datos del sistema.")

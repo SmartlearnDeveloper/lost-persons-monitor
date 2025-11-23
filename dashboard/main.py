@@ -66,7 +66,6 @@ SENSITIVE_INDEX: List[dict] = []
 SEVERITY_RANK = {"alta": 3, "media": 2, "baja": 1}
 PRIORITY_OPTIONS: List[dict] = []
 CASE_ACTION_TYPES: List[dict] = []
-CASE_RESPONSIBLE_OPTIONS: List[dict] = []
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "lost_persons_server.lost_persons_db.persons_lost")
 
@@ -224,32 +223,6 @@ def _load_action_types() -> None:
 _load_action_types()
 
 
-def _load_responsible_options() -> None:
-    global CASE_RESPONSIBLE_OPTIONS
-    try:
-        config_path = Path(__file__).resolve().parent.parent / "config" / "case_responsibles.json"
-        with config_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        CASE_RESPONSIBLE_OPTIONS = [
-            {
-                "value": (entry.get("value") or "").strip(),
-                "label": (entry.get("label") or "").strip() or entry.get("value", "").strip(),
-            }
-            for entry in data
-            if entry.get("value")
-        ]
-    except FileNotFoundError:
-        CASE_RESPONSIBLE_OPTIONS = [
-            {"value": "Coordinador General", "label": "Coordinador General"},
-            {"value": "Lider Zona Norte", "label": "Líder Zona Norte"},
-            {"value": "Lider Zona Centro", "label": "Líder Zona Centro"},
-            {"value": "Lider Zona Sur", "label": "Líder Zona Sur"},
-        ]
-
-
-_load_responsible_options()
-
-
 def _case_manager_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
     url = f"{CASE_MANAGER_INTERNAL_URL}{path}"
     try:
@@ -281,7 +254,6 @@ def _template_context(request: Request, **kwargs) -> dict:
         "case_manager_url": CASE_MANAGER_PUBLIC_URL,
         "priority_options": PRIORITY_OPTIONS,
         "action_types": CASE_ACTION_TYPES,
-        "responsible_options": CASE_RESPONSIBLE_OPTIONS,
         "case_status_values": CASE_STATUS_VALUES,
         "case_status_options": [
             {
@@ -1853,6 +1825,12 @@ async def read_report(request: Request):
 async def manage_cases(request: Request):
     """UI for case management operations."""
     return templates.TemplateResponse("cases.html", _template_context(request))
+
+
+@app.get("/case-responsibles/catalog")
+def case_responsible_catalog():
+    data = _case_manager_get("/responsibles/catalog")
+    return {"items": data or []}
 
 
 @app.get("/cases/{case_id}/report")
