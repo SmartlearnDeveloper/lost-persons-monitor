@@ -84,6 +84,7 @@
             <div class="col-lg-6">
                 <div class="card-panel">
                     <h2 class="h6">Detalles del caso seleccionado</h2>
+                    <p class="text-muted small mb-2">ID: <span id="selectedCaseIdLabel">--</span></p>
                     <form id="updateCaseForm" class="row g-3">
                         <input type="hidden" id="caseIdField" />
                         <div class="col-md-6">
@@ -127,7 +128,10 @@
             <div class="col-lg-6">
                 <div class="card-panel actions-log">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h2 class="h6 mb-0">Historial de acciones</h2>
+                        <div>
+                            <h2 class="h6 mb-0">Historial de acciones</h2>
+                            <small class="text-muted">ID: <span id="actionsCaseIdLabel">--</span></small>
+                        </div>
                         <button class="btn btn-sm btn-outline-primary" id="addActionBtn" disabled>Agregar acción</button>
                     </div>
                     <div id="actionsList" class="list-group list-group-flush" style="max-height: 360px; overflow-y: auto;"></div>
@@ -206,6 +210,8 @@
         const actionModalCancel = document.getElementById('actionModalCancel');
         let currentActionCaseId = null;
         const actionsList = document.getElementById('actionsList');
+        const selectedCaseIdLabel = document.getElementById('selectedCaseIdLabel');
+        const actionsCaseIdLabel = document.getElementById('actionsCaseIdLabel');
 
         const personLabels = new Map();
 
@@ -314,6 +320,8 @@
 
         function resetSelectionForm() {
             caseIdField.value = '';
+            selectedCaseIdLabel.textContent = '--';
+            actionsCaseIdLabel.textContent = '--';
             statusSelect.value = 'new';
             populatePrioritySelect(updatePrioritySelect, '');
             resolvedAt.value = '';
@@ -334,6 +342,8 @@
                 try {
                     const caseData = await fetchJson(`${CASE_MANAGER_URL}/cases/${caseId}`);
                     caseIdField.value = caseData.case_id;
+                    selectedCaseIdLabel.textContent = `#${caseData.case_id}`;
+                    actionsCaseIdLabel.textContent = `#${caseData.case_id}`;
                     statusSelect.value = caseData.status;
                     populatePrioritySelect(updatePrioritySelect, caseData.priority || '');
                     resolvedAt.value = formatDateInput(caseData.resolved_at);
@@ -347,6 +357,7 @@
             } else if (button.dataset.action === 'actions') {
                 addActionBtn.disabled = false;
                 caseIdField.value = caseId;
+                actionsCaseIdLabel.textContent = `#${caseId}`;
                 await loadActions(caseId);
             }
         });
