@@ -9,6 +9,7 @@ from html import escape
 from io import BytesIO
 from pathlib import Path
 from typing import List, Optional, Callable, Set
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import matplotlib
 
@@ -32,6 +33,7 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from aiokafka import AIOKafkaConsumer
+from passlib.context import CryptContext
 
 from dashboard.database import get_db
 from scripts.db_init import (
@@ -41,6 +43,9 @@ from scripts.db_init import (
     Case,
     CaseStatusEnum,
     PersonLost,
+    AuthUser,
+    AuthRole,
+    AuthUserRole,
 )
 from common.security import (
     TokenPayload,
@@ -90,6 +95,12 @@ ROLE_OPTIONS = [
     {"value": "admin", "label": "Administrador"},
 ]
 
+_tz_name = os.environ.get("REPORT_LOCAL_TZ", "America/Bogota")
+try:
+    DASHBOARD_TIMEZONE = ZoneInfo(_tz_name)
+except ZoneInfoNotFoundError:
+    DASHBOARD_TIMEZONE = ZoneInfo("UTC")
+
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 
 require_dashboard_permission = require_permissions(["dashboard"])
@@ -97,6 +108,7 @@ require_case_permission = require_permissions(["case_manager"])
 require_pdf_permission = require_permissions(["pdf_reports"])
 require_report_permission = require_permissions(["report"])
 require_admin_permission = require_permissions(["manage_users"])
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class DashboardSocketManager:
     def __init__(self) -> None:
@@ -335,6 +347,64 @@ def _auth_service_request(
         raise HTTPException(status_code=502, detail="Servicio de autenticación no disponible")
 
 
+def _serialize_user(user: AuthUser, *, roles: Optional[List[str]] = None) -> dict:
+    role_values = sorted(roles or [])
+    return {
+        "user_id": user.user_id,
+        "username": user.username,
+        "full_name": user.full_name,
+        "email": user.email,
+        "is_active": bool(user.is_active),
+        "roles": role_values,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "updated_at": user.updated_at.isoformat() if getattr(user, "updated_at", None) else None,
+        "hashed_password": user.hashed_password,
+    }
+
+
+def _list_auth_users(db: Session) -> List[dict]:
+    users = (
+        db.query(AuthUser)
+        .order_by(AuthUser.username.asc())
+        .all()
+    )
+    role_rows = (
+        db.query(AuthUserRole.user_id, AuthRole.name)
+        .join(AuthRole, AuthRole.role_id == AuthUserRole.role_id)
+        .all()
+    )
+    role_map: dict[int, List[str]] = {}
+    for user_id, role_name in role_rows:
+        role_map.setdefault(user_id, []).append(role_name)
+    serialized = [_serialize_user(user, roles=role_map.get(user.user_id, [])) for user in users]
+    return serialized
+
+
+def _get_user_by_username(db: Session, username: str) -> Optional[AuthUser]:
+    return db.query(AuthUser).filter(AuthUser.username == username).first()
+
+
+def _resolve_roles(db: Session, role_names: List[str]) -> List[AuthRole]:
+    if not role_names:
+        return []
+    normalized = [name.strip() for name in role_names if name and name.strip()]
+    if not normalized:
+        return []
+    roles = db.query(AuthRole).filter(AuthRole.name.in_(normalized)).all()
+    return roles
+
+
+def _replace_user_roles(db: Session, user_id: int, role_names: List[str]) -> None:
+    roles = _resolve_roles(db, role_names)
+    if not roles:
+        default = db.query(AuthRole).filter(AuthRole.name == "member").first()
+        if default:
+            roles = [default]
+    db.query(AuthUserRole).filter(AuthUserRole.user_id == user_id).delete(synchronize_session=False)
+    for role in roles:
+        db.add(AuthUserRole(user_id=user_id, role_id=role.role_id))
+
+
 def _current_year() -> int:
     return datetime.now().astimezone().year
 
@@ -376,11 +446,23 @@ def _template_context(request: Request, current_user: Optional[TokenPayload] = N
 def _format_datetime(value: Optional[datetime]) -> str:
     if not value:
         return "-"
-    return value.astimezone().strftime("%Y-%m-%d %H:%M")
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=DASHBOARD_TIMEZONE)
+    return value.astimezone(DASHBOARD_TIMEZONE).strftime("%Y-%m-%d %H:%M")
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        cleaned = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
 
 
 def _format_generation_timestamp() -> str:
-    local_now = datetime.now().astimezone()
+    local_now = datetime.now(DASHBOARD_TIMEZONE)
     tz_name = local_now.tzname() or "Local"
     return f"{local_now.strftime('%Y-%m-%d %H:%M')} {tz_name}"
 
@@ -2059,21 +2141,113 @@ def case_responsible_catalog(
     return {"items": data or []}
 
 
+@app.get("/admin/api/users")
+def admin_users_api(db: Session = Depends(get_db)):
+    """Devuelve la lista de usuarios registrados para la UI de administración."""
+    return {"items": _list_auth_users(db)}
+
+
+@app.get("/admin/api/users/{user_id}")
+def admin_user_detail_api(user_id: int, db: Session = Depends(get_db)):
+    user = db.query(AuthUser).filter(AuthUser.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    roles = [
+        row[0]
+        for row in (
+            db.query(AuthRole.name)
+            .join(AuthUserRole, AuthRole.role_id == AuthUserRole.role_id)
+            .filter(AuthUserRole.user_id == user.user_id)
+            .all()
+        )
+    ]
+    return _serialize_user(user, roles=roles)
+
+
 @app.get("/admin/users", response_class=HTMLResponse)
-async def admin_users_page(request: Request):
-    token = _proxy_auth_header(request)
-    data = _auth_service_request("GET", "/auth/users", token=token)
+async def admin_users_page(request: Request, db: Session = Depends(get_db)):
+    users = _list_auth_users(db)
     return templates.TemplateResponse(
-        "admin_users_simple.html",
-        _template_context(request, users=data or [], current_user=_current_user_optional(request)),
+        "admin_users.html",
+        _template_context(request, users_initial=users, current_user=_current_user_optional(request)),
+    )
+
+
+@app.get("/admin/users/report")
+def admin_users_report(db: Session = Depends(get_db)):
+    users = _list_auth_users(db)
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=LETTER,
+        title="Listado de usuarios",
+        leftMargin=0.5 * inch,
+        rightMargin=0.5 * inch,
+        topMargin=1.2 * inch,
+        bottomMargin=0.8 * inch,
+    )
+    elements: List = []
+    styles = getSampleStyleSheet()
+    generated_label = _format_generation_timestamp()
+    title = Paragraph("Listado de usuarios registrados", styles["Title"])
+    generated_at = Paragraph(f"Generado: {_format_generation_timestamp()}", styles["Normal"])
+    elements.extend([title, Spacer(1, 0.2 * inch), generated_at, Spacer(1, 0.2 * inch)])
+
+    headers = ["ID", "Usuario", "Nombre", "Correo", "Roles", "Estado", "Creado", "Actualizado"]
+    data = [headers]
+    for user in users:
+        created_dt = _parse_iso_datetime(user.get("created_at"))
+        updated_dt = _parse_iso_datetime(user.get("updated_at"))
+        data.append(
+            [
+                user.get("user_id") or "-",
+                user.get("username") or "-",
+                user.get("full_name") or "-",
+                user.get("email") or "-",
+                ", ".join(user.get("roles") or []) or "-",
+                "Activo" if user.get("is_active") else "Inactivo",
+                _format_datetime(created_dt) if created_dt else "-",
+                _format_datetime(updated_dt) if updated_dt else "-",
+            ]
+        )
+    table = Table(data, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.whitesmoke),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ]
+        )
+    )
+    elements.append(table)
+    def _users_header_footer(canvas_obj, doc_obj):
+        canvas_obj.saveState()
+        width, height = canvas_obj._pagesize
+        canvas_obj.setFont("Helvetica-Bold", 11)
+        canvas_obj.drawString(0.5 * inch, height - 0.5 * inch, f"{BRAND_NAME} · Usuarios registrados")
+        canvas_obj.setFont("Helvetica", 9)
+        canvas_obj.drawRightString(width - 0.5 * inch, height - 0.5 * inch, generated_label)
+        canvas_obj.drawString(0.5 * inch, 0.5 * inch, BRAND_REPORT_FOOTER)
+        canvas_obj.drawRightString(width - 0.5 * inch, 0.5 * inch, f"Pagina {doc_obj.page}")
+        canvas_obj.restoreState()
+
+    doc.build(elements, onFirstPage=_users_header_footer, onLaterPages=_users_header_footer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline; filename=usuarios_registrados.pdf"},
     )
 
 
 @app.get("/admin/users/create", response_class=HTMLResponse)
 async def admin_create_user_form(request: Request):
-    current_user = _ensure_ui_permissions(request, ["manage_users"])
-    if not current_user:
-        return _login_redirect(request)
     return templates.TemplateResponse(
         "admin_user_form.html",
         _template_context(
@@ -2088,46 +2262,75 @@ async def admin_create_user_form(request: Request):
 
 
 @app.post("/admin/users/create", response_class=HTMLResponse)
-async def admin_create_user_submit(request: Request):
-    current_user = _ensure_ui_permissions(request, ["manage_users"])
-    if not current_user:
-        return _login_redirect(request)
+async def admin_create_user_submit(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
+    username = (form.get("username") or "").strip()
+    password = (form.get("password") or "").strip()
+    full_name = (form.get("full_name") or "").strip()
+    email = (form.get("email") or "").strip()
     roles = form.getlist("roles") or ["member"]
-    payload = {
-        "username": form.get("username"),
-        "full_name": form.get("full_name"),
-        "email": form.get("email"),
-        "password": form.get("password"),
-        "roles": roles,
-    }
-    token = _proxy_auth_header(request)
-    try:
-        _auth_service_request("POST", "/auth/register", token=token, payload=payload)
-        return RedirectResponse(url="/admin/users", status_code=303)
-    except HTTPException as exc:
+
+    error_message = None
+    if not username:
+        error_message = "El nombre de usuario es obligatorio."
+    elif not password:
+        error_message = "La contraseña es obligatoria."
+    elif _get_user_by_username(db, username):
+        error_message = "El usuario ya existe."
+
+    if error_message:
         return templates.TemplateResponse(
             "admin_user_form.html",
             _template_context(
                 request,
-                user=payload,
+                user={
+                    "username": username,
+                    "full_name": full_name,
+                    "email": email,
+                    "roles": roles,
+                },
                 form_mode="create",
                 title="Crear nuevo usuario",
                 subtitle="Completa los campos requeridos",
                 submit_label="Crear",
-                error_message=exc.detail,
+                error_message=error_message,
             ),
-            status_code=exc.status_code,
+            status_code=400,
         )
+
+    hashed_password = pwd_context.hash(password)
+    new_user = AuthUser(
+        username=username,
+        full_name=full_name or None,
+        email=email or None,
+        hashed_password=hashed_password,
+        is_active=True,
+    )
+    db.add(new_user)
+    db.flush()
+    _replace_user_roles(db, new_user.user_id, roles)
+    db.commit()
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 @app.get("/admin/users/{username}/edit", response_class=HTMLResponse)
-async def admin_edit_user_form(username: str, request: Request):
-    current_user = _ensure_ui_permissions(request, ["manage_users"])
-    if not current_user:
-        return _login_redirect(request)
-    token = _proxy_auth_header(request)
-    user = _auth_service_request("GET", f"/auth/users/{username}", token=token)
+async def admin_edit_user_form(username: str, request: Request, db: Session = Depends(get_db)):
+    user_record = _get_user_by_username(db, username)
+    if not user_record:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    role_rows = (
+        db.query(AuthRole.name)
+        .join(AuthUserRole, AuthUserRole.role_id == AuthRole.role_id)
+        .filter(AuthUserRole.user_id == user_record.user_id)
+        .all()
+    )
+    user = {
+        "username": user_record.username,
+        "full_name": user_record.full_name,
+        "email": user_record.email,
+        "is_active": user_record.is_active,
+        "roles": [row[0] for row in role_rows],
+    }
     return templates.TemplateResponse(
         "admin_user_form.html",
         _template_context(
@@ -2142,52 +2345,34 @@ async def admin_edit_user_form(username: str, request: Request):
 
 
 @app.post("/admin/users/{username}/edit", response_class=HTMLResponse)
-async def admin_edit_user_submit(username: str, request: Request):
-    current_user = _ensure_ui_permissions(request, ["manage_users"])
-    if not current_user:
-        return _login_redirect(request)
+async def admin_edit_user_submit(username: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_user_by_username(db, username)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     form = await request.form()
-    roles = form.getlist("roles") or None
-    payload = {
-        "full_name": form.get("full_name"),
-        "email": form.get("email"),
-        "is_active": form.get("is_active") == "on",
-    }
-    password = form.get("password")
+    roles = form.getlist("roles") or ["member"]
+    full_name = (form.get("full_name") or "").strip()
+    email = (form.get("email") or "").strip()
+    password = (form.get("password") or "").strip()
+    is_active = form.get("is_active") == "on"
+
+    user.full_name = full_name or None
+    user.email = email or None
+    user.is_active = is_active
     if password:
-        payload["password"] = password
-    if roles is not None:
-        payload["roles"] = roles or ["member"]
-    token = _proxy_auth_header(request)
-    try:
-        _auth_service_request("PATCH", f"/auth/users/{username}", token=token, payload=payload)
-        return RedirectResponse(url="/admin/users", status_code=303)
-    except HTTPException as exc:
-        current_data = _auth_service_request("GET", f"/auth/users/{username}", token=token)
-        return templates.TemplateResponse(
-            "admin_user_form.html",
-            _template_context(
-                request,
-                user=current_data,
-                form_mode="edit",
-                title=f"Editar usuario {username}",
-                subtitle="Actualiza los datos necesarios",
-                submit_label="Guardar",
-                error_message=exc.detail,
-            ),
-            status_code=exc.status_code,
-        )
+        user.hashed_password = pwd_context.hash(password)
+    _replace_user_roles(db, user.user_id, roles)
+    db.commit()
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 @app.post("/admin/users/{username}/delete")
-async def admin_user_toggle(username: str, request: Request):
-    current_user = _ensure_ui_permissions(request, ["manage_users"])
-    if not current_user:
-        return _login_redirect(request)
-    token = _proxy_auth_header(request)
-    user = _auth_service_request("GET", f"/auth/users/{username}", token=token)
-    payload = {"is_active": not user.get("is_active", True)}
-    _auth_service_request("PATCH", f"/auth/users/{username}", token=token, payload=payload)
+async def admin_user_toggle(username: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_user_by_username(db, username)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    user.is_active = not bool(user.is_active)
+    db.commit()
     return RedirectResponse(url="/admin/users", status_code=303)
 
 

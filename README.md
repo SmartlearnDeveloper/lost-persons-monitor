@@ -32,6 +32,7 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
    docker compose exec jobmanager /opt/flink/bin/flink list
    docker compose exec connect curl -s http://localhost:8083/connectors/lost-persons-connector/status
     docker compose exec auth_service curl -s http://localhost:58104/health
+    docker compose exec dashboard env | grep REPORT_LOCAL_TZ
    ```
 9. **Modo local opcional**: levanta un servicio puntual con `uvicorn` y registra el conector manualmente (`curl localhost:40125/connectors/`).
 
@@ -58,7 +59,7 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
   - `reporter`: puede registrar personas perdidas (`report`) y ver estadísticas básicas (`dashboard`).
   - `analyst`: incluye permisos para descargar reportes PDF (`pdf_reports`).
   - `coordinator`: añade acceso al case manager (`case_manager`).
--  - `member`: rol por defecto para autoservicio. Incluye `report`, `dashboard` y `pdf_reports` (sin acceso a `/cases`).
+  - `member`: rol por defecto para autoservicio. Incluye `report`, `dashboard` y `pdf_reports` (sin acceso a `/cases`).
   - `admin`: suma `manage_users` para crear/editar usuarios desde `/auth/register`, `/auth/users/*` o el módulo web.
 - Todos los frontales (`/report`, `/dashboard`, `/cases`, `/reports`) redirigen a `/login` si no detectan un JWT vigente. El login guarda el token en `localStorage` y en una cookie HTTP-only (`lpm_token`) para que FastAPI valide tanto `fetch` como los formularios tradicionales (PDF).
 - Para automatizar pruebas, solicita un token con cURL:
@@ -69,7 +70,7 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
   ```
   El `access_token` debe enviarse como `Authorization: Bearer <token>` en cada microservicio.
 - Los usuarios pueden auto-registrarse desde `/register`; el sistema asigna el rol `member`. Para subir de nivel (por ejemplo, acceso a `/cases`), un administrador debe editar sus roles en `/admin/users`.
-- `/admin/users` sólo es visible para quienes tengan `manage_users`. Permite crear cuentas, restablecer contraseñas, activar/desactivar usuarios y ajustar roles/ permisos.
+- `/admin/users` sólo es visible para quienes tengan `manage_users`. Desde ahí puedes crear cuentas, editar perfiles, alternar estados usando el modal **Cambiar estado** y descargar el PDF **Listado de usuarios** (sin contraseñas, con header y footer).
 
 ## Flujo de datos
 
@@ -81,7 +82,7 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
 
 ## Variables de entorno clave
 
-- `REPORT_LOCAL_TZ`: zona horaria usada por el producer.
+- `REPORT_LOCAL_TZ`: zona horaria usada por el producer y el dashboard para sellar fechas, KPIs y PDF (por defecto `America/Bogota`).
 - `FLINK_LOCAL_TIMEZONE`: zona horaria para las funciones de fecha/hora en Flink.
 - `CASE_MANAGER_URL` / `CASE_MANAGER_PUBLIC_URL`: endpoints interno y expuesto para el dashboard.
 - `DASHBOARD_REFRESH_URL`: ruta interna (`http://dashboard:58102/internal/refresh`) que el case manager invoca tras cada cambio.
@@ -97,6 +98,7 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
 2. `SHOW TABLES FROM lost_persons_db` → verifica que existan `case_responsible_history`, `responsible_contacts`, `case_actions` con `responsible_name` y todas las tablas `auth_*`.
 3. Envía un reporte desde `/report`, asigna un responsable en `/cases`, registra una acción y descarga el PDF para confirmar que Prioridad (Alta/Media/Baja) y el responsable aparecen en español.
 4. Observa `/dashboard`: los KPIs y gráficas deberían reaccionar sin recargar.
+5. Desde `/admin/users` verifica que los íconos de acciones funcionen, que el modal **Cambiar estado** alterne el campo “Activo” y descarga el PDF **Listado de usuarios** para confirmar encabezado/pie, número de página y ausencia del hash de contraseña.
 
 ## Estructura del repo
 

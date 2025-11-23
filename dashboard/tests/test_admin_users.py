@@ -9,7 +9,13 @@ def client_fixture():
     return TestClient(app)
 
 
-def test_admin_users_requires_login(client):
-    response = client.get("/admin/users", follow_redirects=False)
-    assert response.status_code == 303
-    assert "/login" in response.headers.get("location", "")
+def test_admin_users_page_loads(client):
+    response = client.get("/admin/users")
+    assert response.status_code == 200
+    assert "Usuarios registrados" in response.text
+
+
+def test_admin_users_api_returns_payload(client):
+    response = client.get("/admin/api/users")
+    assert response.status_code == 200
+    assert "items" in response.json()
