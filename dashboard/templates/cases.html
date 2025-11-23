@@ -306,7 +306,8 @@
                     <td>${item.resolved_at ? formatDate(item.resolved_at) : '-'}</td>
                     <td>
                         <button class="btn btn-sm btn-outline-primary me-1" data-action="edit">Editar</button>
-                        <button class="btn btn-sm btn-outline-secondary" data-action="actions">Ver acciones</button>
+                        <button class="btn btn-sm btn-outline-secondary me-1" data-action="actions">Ver acciones</button>
+                        <button class="btn btn-sm btn-outline-success" data-action="report">Reporte</button>
                     </td>
                 `;
                 casesTableBody.appendChild(row);
@@ -359,6 +360,8 @@
                 caseIdField.value = caseId;
                 actionsCaseIdLabel.textContent = `#${caseId}`;
                 await loadActions(caseId);
+            } else if (button.dataset.action === 'report') {
+                window.open(`/cases/${caseId}/report`, '_blank');
             }
         });
 

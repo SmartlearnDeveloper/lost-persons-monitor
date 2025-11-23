@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import httpx
-from fastapi import FastAPI, Depends, Request, Form, Query
+from fastapi import FastAPI, Depends, Request, Form, Query, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.templating import Jinja2Templates
@@ -265,6 +265,12 @@ def _template_context(request: Request, **kwargs) -> dict:
     }
     base.update(kwargs)
     return base
+
+
+def _format_datetime(value: Optional[datetime]) -> str:
+    if not value:
+        return "-"
+    return value.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def _format_generation_timestamp() -> str:
@@ -1819,6 +1825,108 @@ async def read_report(request: Request):
 async def manage_cases(request: Request):
     """UI for case management operations."""
     return templates.TemplateResponse("cases.html", _template_context(request))
+
+
+@app.get("/cases/{case_id}/report")
+def case_pdf_report(case_id: int, db: Session = Depends(get_db)):
+    case = db.query(Case).filter(Case.case_id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    person = case.person
+    person_name = f"{person.first_name} {person.last_name}".strip() if person else "Sin registrar"
+    gender_map = {"M": "Masculino", "F": "Femenino", "O": "Otro"}
+    gender_label = gender_map.get(getattr(person, "gender", None), getattr(person, "gender", "Desconocido"))
+
+    actions = _case_manager_get(f"/cases/{case_id}/actions")
+    if actions is None:
+        actions = [
+            {
+                "action_type": action.action_type,
+                "notes": action.notes,
+                "actor": action.actor,
+                "created_at": action.created_at.isoformat(),
+            }
+            for action in case.actions
+        ]
+
+    buffer = BytesIO()
+    title = f"Reporte del caso #{case.case_id}"
+    doc, add_page_number = _create_pdf_doc(buffer, orientation="portrait", title=title)
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph(title, styles["Heading1"]),
+        Spacer(1, 12),
+    ]
+
+    case_rows = [
+        ["ID de caso", f"#{case.case_id}"],
+        ["Persona", person_name],
+        ["Género", gender_label],
+        ["Edad", getattr(person, "age", None) or "Sin registro"],
+        ["Estado", CASE_STATUS_LABELS.get(case.status.value, case.status.value)],
+        ["Prioridad", case.priority or "Sin prioridad"],
+        ["¿Prioritario?", "Sí" if case.is_priority else "No"],
+        ["Reportado", _format_datetime(case.reported_at)],
+        ["Resuelto", _format_datetime(case.resolved_at)],
+        ["Resumen de resolución", case.resolution_summary or "Sin resumen"],
+        ["Ubicación reportada", getattr(person, "lost_location", None) or "Sin registro"],
+        ["Detalles del reporte", getattr(person, "details", None) or "Sin detalles"],
+    ]
+    case_table = Table(case_rows, colWidths=[170, 360])
+    case_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#94a3b8")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(case_table)
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Historial de acciones", styles["Heading2"]))
+    actions_rows = [["Fecha", "Tipo", "Notas", "Responsable"]]
+    for action in actions:
+        label = next(
+            (item["label"] for item in CASE_ACTION_TYPES if item["value"] == action.get("action_type")),
+            action.get("action_type", ""),
+        )
+        created_at = action.get("created_at")
+        action_date = "-"
+        if created_at:
+            try:
+                action_date = _format_datetime(datetime.fromisoformat(created_at))
+            except ValueError:
+                action_date = created_at
+        actions_rows.append(
+            [
+                action_date,
+                label,
+                action.get("notes") or "Sin notas",
+                action.get("actor") or "N/A",
+            ]
+        )
+    actions_table = Table(actions_rows, colWidths=[110, 110, 200, 110])
+    actions_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d223d")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#94a3b8")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(actions_table)
+
+    doc.build(story, onFirstPage=add_page_number, onLaterPages=add_page_number)
+    buffer.seek(0)
+    filename = f"case_{case.case_id}_report.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
 
 
 @app.websocket("/ws/dashboard")
