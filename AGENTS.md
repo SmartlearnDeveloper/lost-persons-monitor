@@ -1,48 +1,39 @@
 # Repository Guidelines
 
 ## Project Overview
-- Lost Persons Monitor is a CDC pipeline: the `producer` writes reports to MySQL, Debezium streams binlog events into Kafka, Flink aggregates them, and the `dashboard` renders live intelligence.
-- As of `version_2_0_0` the system ships as a Docker-based microservice architecture: MySQL, Zookeeper, Kafka, Kafka Connect, Flink (JM/TM), Producer, Dashboard, Case Manager, and a helper container wire together via `docker compose`.
-- Docker Compose keeps services decoupled while delivering low-latency snapshots (age, gender, hourly distributions) for responders. The dashboard uses WebSockets to refresh KPIs and charts immediately after Kafka (Debezium + Flink) publishes new aggregates.
-- Producer now auto-creates a matching case per report and normalizes timestamps using `REPORT_LOCAL_TZ` (default `America/Guayaquil`) so downstream aggregations and KPIs line up with local time.
-- Flink containers obey `FLINK_LOCAL_TIMEZONE` (default `America/Guayaquil`) for hourly buckets; adjust this env var if you deploy in another locale.
+- Lost Persons Monitor es un pipeline CDC completo: el `producer` registra reportes de personas perdidas en MySQL, Debezium transmite los cambios a Kafka, Flink genera agregados en tiempo (casi) real y el `dashboard` expone métricas, dashboards y reportes PDF (incluyendo historial de responsables y acciones).
+- Desde `version_2_0_0`, toda la plataforma corre dentro de Docker Compose (`mysql`, `zookeeper`, `kafka`, `connect`, `flink_jobmanager`, `flink_taskmanager`, `producer_service`, `dashboard_service`, `case_manager_service`, `connector_init`).
+- Los casos se crean automáticamente con cada reporte y ahora incluyen seguimiento de responsables (`case_responsible_history`) y contactos disponibles (`responsible_contacts`).
 
-## Project Structure & Module Organization
-- `producer/` is the sole write surface into MySQL; expanding ingestion flows happens here.
-- `dashboard/` consumes the aggregated tables created by Flink to render HTML and JSON endpoints.
-- `scripts/db_init.py` defines SQLAlchemy ORM tables (personas, agregaciones y casos) and provisions schema; run it after schema edits.
-- `flink/` stores `flink_sql_job.sql` and connector JARs that mount into the JobManager/TaskManager images.
-- `config.json` centralizes local credentials and ports, while `debezium-connector.json` registers the Kafka Connect connector.
-- `case_manager/` exposes a FastAPI module for CRUD operations on cases, action timelines, and KPI endpoints consumed by the dashboard.
+## Estructura del Repositorio
+- `producer/`: FastAPI para recepción de reportes; crea personas, casos y dispara responsables/prioridades base.
+- `case_manager/`: API de casos, acciones, historial de responsables, KPIs y endpoints para PDF.
+- `dashboard/`: UI (Forms, Dashboard, Cases, Reports), WebSocket listener y generador de reportes PDF.
+- `flink/`, `flink-job/`: job SQL/Java que consume Kafka y escribe agregados `agg_*` en MySQL.
+- `scripts/`: `db_init.py`, `reset_db.sh`, `stack_check.py` y utilidades extras.
+- `config/`: plantillas (`config.json`, `debezium-connector.json`, prioridades, etc.).
 
-## Build & Test Commands
-- Prepare a Python env (recommended: `python -m venv .venv && source .venv/bin/activate`; legacy environments remain under `producer/venv` and `dashboard/venv` and can be reactivated with `source producer/venv/bin/activate` or `source dashboard/venv/bin/activate` if needed).
-- `pip install -r producer/requirements.txt`, `pip install -r dashboard/requirements.txt`, and `pip install -r case_manager/requirements.txt` inside the active env to install service deps.
-- `python scripts/db_init.py` prepares the schema (including case tables); rerun after ORM edits.
-- To reset the database to zero records, run `./scripts/reset_db.sh` (arranca MySQL, borra el esquema y vuelve a ejecutar `db_init.py` dentro del contenedor). El script espera a que MySQL esté saludable y usa `docker compose run --rm --no-deps` para aplicar migraciones limpias.
-- Build the Flink job jar with `mvn -f flink-job/pom.xml clean package` before starting containers so the JobManager can submit it.
-- `docker compose up -d --build` launches the entire microservice stack (MySQL, Kafka, Kafka Connect, Flink, and the FastAPI services) using the 4011x–4015x host port scheme. The `connector_init` helper container automatically registers Debezium on startup; rerun it with `docker compose run --rm connector_init` whenever you edit `debezium-connector.json` (now tuned with `poll.interval.ms=500` and `max.batch.size=256` for near-real-time updates). The JobManager automatically runs `lost-persons-job.jar` once it is healthy so aggregates stay fresh. Use `docker compose down` to stop the stack.
-- `uvicorn producer.main:app --reload --host 0.0.0.0 --port 58101`, `uvicorn dashboard.main:app --reload --host 0.0.0.0 --port 58102`, and `uvicorn case_manager.main:app --reload --host 0.0.0.0 --port 58103` run APIs locally; if you bypass Docker, register CDC manually with `curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:40125/connectors/ -d @debezium-connector.json`.
+## Comandos Clave
+1. `docker compose build producer` (cuando cambie `db_init.py`).
+2. `./scripts/reset_db.sh` – reinicia esquema, crea tablas nuevas y muestra `SHOW TABLES` al final.
+3. `mvn -f flink-job/pom.xml clean package` – recompila el job.
+4. `docker compose up -d --build` – levanta toda la pila.
+5. `docker compose run --rm connector_init` – re-registra Debezium si hiciera falta.
+6. Verificaciones:
+   - `docker compose exec jobmanager /opt/flink/bin/flink list`
+   - `docker compose exec connect curl -s http://localhost:8083/connectors/lost-persons-connector/status`
 
-## Code Style Guidelines
-- Follow PEP 8: four-space indentation, snake_case functions, PascalCase classes, and descriptive module names.
-- Use type hints and Pydantic models for API contracts, and centralize configuration access rather than duplicating file parsing.
-- Keep aggregation helpers or shared ORM entities with the existing definitions in `scripts/db_init.py`.
+## Estándares de Código y Tests
+- PEP 8 para Python, SQL/HTML bien formateado y modular.
+- Tests por servicio (`tests/producer`, `tests/dashboard`, etc.) usando `pytest` + `fastapi.TestClient`. Mockear MySQL vía SQLite/fixtures.
+- Documentar validaciones manuales (trazas WebSocket, screenshots, PDFs) en PRs.
 
-## Testing Instructions
-- Add FastAPI integration tests under `/tests` (e.g., `test_<feature>.py`) using `pytest` and `fastapi.TestClient`.
-- Cover new endpoints with success and failure tests using SQLite or SQLAlchemy fixtures instead of live MySQL, and note manual checks in PRs.
+## Seguridad y Operación
+- Variables sensibles fuera del repo (`config.json` sólo para local). `REPORT_LOCAL_TZ`, `FLINK_LOCAL_TIMEZONE`, `CASE_MANAGER_URL/PUBLIC_URL`, `DASHBOARD_REFRESH_URL` controlan comportamientos clave.
+- `reset_db.sh` y `stack_check.py` ayudan a mantener la integridad antes de demos.
+- Revisa logs (`docker compose logs <service>`) ante cualquier “NetworkError” e identifica si falta migrar tablas (`case_actions.responsible_name`, `case_responsible_history`, etc.).
 
-## Security Considerations
-- Never commit real credentials; override `config.json` via environment variables outside local dev.
-- Keep sensitive or bulky datasets in a gitignored `data/` directory.
-- Before deployment, run `docker compose pull` then `docker compose up -d --build`, confirm Kafka topics exist, and review Flink SQL for unbounded joins or missing primary keys.
-
-## Known Issues (investigating)
-- The `connector_init` automation may exit early (curl error 7) if Kafka Connect is still booting. Re-run `docker compose run --rm connector_init` or register the connector manually once `connect` is healthy; root cause triage is in progress.
-- Because Debezium relies on binlog polling, expect sub-second delays even with the tuned `poll.interval.ms`. If real-time charts lag, verify the connector status (`docker compose exec connect curl -s http://localhost:8083/connectors/lost-persons-connector/status`) before blaming UI code.
-
-## Commit & Pull Request Guidelines
-- Write imperative, ≤72-character commit subjects such as `Add hourly dashboard endpoint`, with optional body context for reviewers.
-- Scope commits to a single concern (API, streaming, infra) and mention impacted services.
-- Pull requests must outline functional changes, deployment/migration steps, verification evidence, and link related issues when available.
+## Workflow de Contribución
+- Commits imperativos ≤72 caracteres (ej. `feat: assign and track case responsibles`).
+- PRs deben incluir cambios funcionales, pasos de despliegue/migración, evidencia (logs, screenshots, PDFs) y dependencias nuevas.
+- Coordina reinicios de la pila cuando se toque Flink o la base; la documentación en cada `AGENTS.md` de subcarpeta resume detalles específicos de cada servicio.
