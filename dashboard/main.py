@@ -65,6 +65,7 @@ SENSITIVE_TERMS: List[dict] = []
 SENSITIVE_INDEX: List[dict] = []
 SEVERITY_RANK = {"alta": 3, "media": 2, "baja": 1}
 PRIORITY_OPTIONS: List[dict] = []
+PRIORITY_LABELS: dict = {}
 CASE_ACTION_TYPES: List[dict] = []
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "lost_persons_server.lost_persons_db.persons_lost")
@@ -174,7 +175,7 @@ _load_sensitive_terms()
 
 
 def _load_priority_options() -> None:
-    global PRIORITY_OPTIONS
+    global PRIORITY_OPTIONS, PRIORITY_LABELS
     try:
         config_path = Path(__file__).resolve().parent.parent / "config" / "case_priorities.json"
         with config_path.open("r", encoding="utf-8") as f:
@@ -193,6 +194,7 @@ def _load_priority_options() -> None:
             {"value": "medium", "label": "Media"},
             {"value": "low", "label": "Baja"},
         ]
+    PRIORITY_LABELS = {item["value"]: item["label"] for item in PRIORITY_OPTIONS}
 
 
 _load_priority_options()
@@ -1881,7 +1883,7 @@ def case_pdf_report(case_id: int, db: Session = Depends(get_db)):
         ["Género", gender_label],
         ["Edad", getattr(person, "age", None) or "Sin registro"],
         ["Estado", CASE_STATUS_LABELS.get(case.status.value, case.status.value)],
-        ["Prioridad", case.priority or "Sin prioridad"],
+        ["Prioridad", PRIORITY_LABELS.get(case.priority, case.priority or "Sin prioridad")],
         ["¿Prioritario?", "Sí" if case.is_priority else "No"],
         ["Reportado", _format_datetime(case.reported_at)],
         ["Resuelto", _format_datetime(case.resolved_at)],
