@@ -2064,7 +2064,7 @@ async def admin_users_page(request: Request):
     token = _proxy_auth_header(request)
     data = _auth_service_request("GET", "/auth/users", token=token)
     return templates.TemplateResponse(
-        "admin_users.html",
+        "admin_users_simple.html",
         _template_context(request, users=data or [], current_user=_current_user_optional(request)),
     )
 
