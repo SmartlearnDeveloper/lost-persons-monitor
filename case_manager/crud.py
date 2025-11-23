@@ -126,6 +126,8 @@ def create_case_action(
     notes: Optional[str],
     actor: Optional[str],
     metadata_json: Optional[str],
+    created_by: Optional[int],
+    fallback_actor: Optional[str] = None,
 ) -> CaseAction:
     current_responsible = (
         db.query(CaseResponsibleHistory)
@@ -137,8 +139,9 @@ def create_case_action(
         case_id=case.case_id,
         action_type=action_type,
         notes=notes,
-        actor=actor,
+        actor=actor or fallback_actor,
         responsible_name=current_responsible.responsible_name if current_responsible else None,
+        created_by=created_by,
         metadata_json=metadata_json,
     )
     db.add(action)
@@ -163,11 +166,12 @@ def create_case_responsible(
     responsible_name: str,
     assigned_by: Optional[str],
     notes: Optional[str],
+    default_assigned_by: Optional[str] = None,
 ) -> CaseResponsibleHistory:
     entry = CaseResponsibleHistory(
         case_id=case.case_id,
         responsible_name=responsible_name,
-        assigned_by=assigned_by,
+        assigned_by=assigned_by or default_assigned_by,
         notes=notes,
     )
     db.add(entry)

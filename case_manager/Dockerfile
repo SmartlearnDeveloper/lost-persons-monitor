@@ -13,6 +13,7 @@ COPY config_loader.py ./config_loader.py
 COPY config.json ./config.json
 COPY config ./config
 COPY scripts ./scripts
+COPY common ./common
 COPY case_manager ./case_manager
 
 ENV PYTHONPATH=/app

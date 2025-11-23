@@ -100,6 +100,14 @@
 </head>
 <body>
     <div class="container py-4">
+        <div class="d-flex justify-content-end mb-3 gap-2 align-items-center" id="sessionControls">
+            <span class="text-muted small" data-lpm-username></span>
+            <a class="btn btn-sm btn-primary" href="/login" data-lpm-login>Iniciar sesión</a>
+            <form method="post" action="/logout" class="d-inline-block d-none" data-lpm-logout>
+                <input type="hidden" name="next" value="{{ request.url.path }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Cerrar sesión</button>
+            </form>
+        </div>
         <div class="dashboard-header">
             <div>
                 <h1>Panel {{ brand_name }}</h1>
@@ -191,8 +199,14 @@
         {{ brand_name }} · {{ brand_copyright }}
     </footer>
 
+    <script>window.LPM_AUTH_LOGIN_URL = "{{ auth_login_url }}";</script>
+    <script src="/static/js/auth.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            if (window.LPMAuth) {
+                window.LPMAuth.requireAuth();
+                window.LPMAuth.populateSessionBadge('#sessionControls');
+            }
             const REFRESH_INTERVAL_MS = 30000;
             const summaryElements = {
                 total: document.getElementById('totalCasesValue'),
@@ -231,7 +245,7 @@
             let dashboardSocket = null;
 
             async function fetchJson(url) {
-                const response = await fetch(url);
+                const response = await window.LPMAuth.authFetch(url);
                 if (!response.ok) {
                     throw new Error(`Request failed with status ${response.status}`);
                 }

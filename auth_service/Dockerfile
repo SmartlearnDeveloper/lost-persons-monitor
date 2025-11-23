@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY producer/requirements.txt /tmp/requirements.txt
+COPY auth_service/requirements.txt /tmp/requirements.txt
 RUN pip install --upgrade pip && pip install -r /tmp/requirements.txt
 
 COPY config_loader.py ./config_loader.py
@@ -14,9 +14,11 @@ COPY config.json ./config.json
 COPY config ./config
 COPY scripts ./scripts
 COPY common ./common
-COPY producer ./producer
+COPY auth_service ./auth_service
 
-ENV PYTHONPATH=/app
-EXPOSE 58101
+ENV PYTHONPATH=/app \
+    AUTH_SECRET_KEY=${AUTH_SECRET_KEY:-change_this_secret}
 
-CMD ["uvicorn", "producer.main:app", "--host", "0.0.0.0", "--port", "58101"]
+EXPOSE 58104
+
+CMD ["uvicorn", "auth_service.main:app", "--host", "0.0.0.0", "--port", "58104"]

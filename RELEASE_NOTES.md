@@ -1,3 +1,24 @@
+# version_2_1_0
+
+## Highlights
+
+- Añade el microservicio `auth_service` (FastAPI + JWT) y la librería compartida `common/security.py`, habilitando login centralizado y control de permisos (`report`, `dashboard`, `pdf_reports`, `case_manager`, `manage_users`).
+- Todas las experiencias web (`/report`, `/dashboard`, `/cases`, `/reports`) ahora pasan por `/login`; la cookie `lpm_token` mantiene autenticados los formularios tradicionales (PDF) y los `fetch`.
+- El dashboard copia `common/security.py`, protege los endpoints `/stats/*`, `/case-stats/*`, renderiza las plantillas nuevas (`login.html`, `login_success.html`, `logout.html`) y expone `dashboard/static/js/auth.js` para conservar tokens en el navegador.
+- El producer y el case manager verifican JWTs y registran al usuario que crea reportes, acciones o responsables, dejando trazabilidad en MySQL.
+- `scripts/db_init.py` crea tablas `auth_*`, siembra permisos/roles y genera el administrador predeterminado (`admin/admin123`); `reset_db.sh` ahora imprime el catálogo completo para validarlos.
+- Se documentó el nuevo flujo (README + AGENTS) y se fijó `bcrypt==4.0.1` para evitar incompatibilidades con Passlib.
+
+## Verification Checklist
+
+1. `docker compose build producer dashboard case_manager auth_service`
+2. `./scripts/reset_db.sh` (observa `auth_users`, `auth_roles`, etc. al final)
+3. `docker compose up -d --build`
+4. `docker compose ps` → confirma que `auth_service` está “Up” y `docker compose exec auth_service curl -s http://localhost:58104/health`
+5. Abre `http://localhost:40145/login`, inicia sesión con `admin/admin123` y verifica que `/report`, `/dashboard`, `/cases` y `/reports` respondan
+6. Desde `/reports/demographic-distribution` genera un PDF para confirmar que la cookie `lpm_token` autoriza el formulario
+7. Envía un reporte, asigna responsable y registra acciones en `/cases`; descarga el PDF y valida que el responsable y las prioridades se muestren en español
+
 # version_1_1_0
 
 ## Highlights

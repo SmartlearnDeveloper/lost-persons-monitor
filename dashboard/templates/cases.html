@@ -29,6 +29,15 @@
             <a href="/" class="btn btn-outline-secondary btn-sm">Regresar al inicio</a>
         </div>
 
+        <div class="d-flex justify-content-end mb-3 gap-2 align-items-center" id="sessionControls">
+            <span class="text-muted small" data-lpm-username></span>
+            <a class="btn btn-sm btn-primary" href="/login" data-lpm-login>Iniciar sesión</a>
+            <form method="post" action="/logout" class="d-inline-block d-none" data-lpm-logout>
+                <input type="hidden" name="next" value="{{ request.url.path }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Cerrar sesión</button>
+            </form>
+        </div>
+
         <div id="casesAlert" class="alert d-none" role="alert"></div>
 
         <div class="row g-4">
@@ -177,8 +186,14 @@
         </div>
     </div>
 
+    <script>window.LPM_AUTH_LOGIN_URL = "{{ auth_login_url }}";</script>
+    <script src="/static/js/auth.js"></script>
     <script>
         const CASE_MANAGER_URL = '{{ case_manager_url }}';
+        if (window.LPMAuth) {
+            window.LPMAuth.requireAuth();
+            window.LPMAuth.populateSessionBadge('#sessionControls');
+        }
         const statusLabels = {
             new: 'Nuevo',
             in_progress: 'En progreso',
@@ -298,7 +313,7 @@
         }
 
         async function fetchJson(url, options = {}) {
-            const response = await fetch(url, options);
+            const response = await window.LPMAuth.authFetch(url, options);
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(text || `Request failed (${response.status})`);

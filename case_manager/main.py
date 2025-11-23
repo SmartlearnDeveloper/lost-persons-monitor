@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from case_manager import crud, schemas
 from case_manager.database import get_db
+from common.security import TokenPayload, require_permissions
 # Note: ORM models are imported indirectly through crud module
 
 app = FastAPI(title="Lost Persons Case Manager")
@@ -23,6 +24,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+require_case_manager = require_permissions(["case_manager"])
+require_dashboard = require_permissions(["dashboard"])
 
 
 def notify_dashboard_refresh(event: str, case_id: Optional[int] = None) -> None:
@@ -62,6 +66,7 @@ def list_cases(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_case_manager),
 ):
     cases, total = crud.list_cases(
         db,
@@ -74,7 +79,11 @@ def list_cases(
 
 
 @app.get("/cases/{case_id}", response_model=schemas.Case)
-def read_case(case_id: int, db: Session = Depends(get_db)):
+def read_case(
+    case_id: int,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_case_manager),
+):
     case = crud.get_case(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -82,7 +91,11 @@ def read_case(case_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/cases", response_model=schemas.Case, status_code=201)
-def create_case(payload: schemas.CaseCreate, db: Session = Depends(get_db)):
+def create_case(
+    payload: schemas.CaseCreate,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_case_manager),
+):
     case = crud.create_case(
         db,
         person_id=payload.person_id,
@@ -96,7 +109,12 @@ def create_case(payload: schemas.CaseCreate, db: Session = Depends(get_db)):
 
 
 @app.patch("/cases/{case_id}", response_model=schemas.Case)
-def update_case(case_id: int, payload: schemas.CaseUpdate, db: Session = Depends(get_db)):
+def update_case(
+    case_id: int,
+    payload: schemas.CaseUpdate,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_case_manager),
+):
     case = crud.get_case(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -114,7 +132,11 @@ def update_case(case_id: int, payload: schemas.CaseUpdate, db: Session = Depends
 
 
 @app.get("/cases/{case_id}/actions", response_model=list[schemas.CaseAction])
-def list_actions(case_id: int, db: Session = Depends(get_db)):
+def list_actions(
+    case_id: int,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_case_manager),
+):
     if not crud.get_case(db, case_id):
         raise HTTPException(status_code=404, detail="Case not found")
     actions = crud.list_case_actions(db, case_id=case_id)
@@ -122,7 +144,12 @@ def list_actions(case_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/cases/{case_id}/actions", response_model=schemas.CaseAction, status_code=201)
-def create_action(case_id: int, payload: schemas.CaseActionCreate, db: Session = Depends(get_db)):
+def create_action(
+    case_id: int,
+    payload: schemas.CaseActionCreate,
+    db: Session = Depends(get_db),
+    current_user: TokenPayload = Depends(require_case_manager),
+):
     case = crud.get_case(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -133,13 +160,19 @@ def create_action(case_id: int, payload: schemas.CaseActionCreate, db: Session =
         notes=payload.notes,
         actor=payload.actor,
         metadata_json=payload.metadata_json,
+        created_by=current_user.user_id,
+        fallback_actor=current_user.username,
     )
     notify_dashboard_refresh("case_action_created", case.case_id)
     return action
 
 
 @app.get("/cases/{case_id}/responsibles", response_model=list[schemas.CaseResponsible])
-def list_responsibles(case_id: int, db: Session = Depends(get_db)):
+def list_responsibles(
+    case_id: int,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_case_manager),
+):
     case = crud.get_case(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -147,7 +180,12 @@ def list_responsibles(case_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/cases/{case_id}/responsibles", response_model=schemas.CaseResponsible, status_code=201)
-def add_responsible(case_id: int, payload: schemas.CaseResponsibleCreate, db: Session = Depends(get_db)):
+def add_responsible(
+    case_id: int,
+    payload: schemas.CaseResponsibleCreate,
+    db: Session = Depends(get_db),
+    current_user: TokenPayload = Depends(require_case_manager),
+):
     case = crud.get_case(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -157,24 +195,35 @@ def add_responsible(case_id: int, payload: schemas.CaseResponsibleCreate, db: Se
         responsible_name=payload.responsible_name,
         assigned_by=payload.assigned_by,
         notes=payload.notes,
+        default_assigned_by=current_user.username,
     )
     notify_dashboard_refresh("case_responsible_created", case.case_id)
     return entry
 
 
 @app.get("/responsibles/catalog", response_model=list[schemas.ResponsibleContact])
-def responsible_catalog(db: Session = Depends(get_db)):
+def responsible_catalog(
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_case_manager),
+):
     return crud.list_responsible_contacts(db)
 
 
 @app.get("/cases/stats/summary", response_model=schemas.CaseSummary)
-def summary_stats(db: Session = Depends(get_db)):
+def summary_stats(
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_dashboard),
+):
     data = crud.get_cases_summary(db)
     return schemas.CaseSummary(**data)
 
 
 @app.get("/cases/stats/time-series", response_model=schemas.TimeSeriesResponse)
-def time_series(range: str = Query("7d", pattern="^(24h|7d|30d)$"), db: Session = Depends(get_db)):
+def time_series(
+    range: str = Query("7d", pattern="^(24h|7d|30d)$"),
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_dashboard),
+):
     if range == "24h":
         days = 1
     elif range == "7d":

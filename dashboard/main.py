@@ -20,6 +20,7 @@ import httpx
 from fastapi import FastAPI, Depends, Request, Form, Query, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi import WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, text
@@ -40,6 +41,12 @@ from scripts.db_init import (
     Case,
     CaseStatusEnum,
     PersonLost,
+)
+from common.security import (
+    TokenPayload,
+    decode_token,
+    get_token_from_request,
+    require_permissions,
 )
 
 app = FastAPI(title="Lost Persons Dashboard")
@@ -69,6 +76,18 @@ PRIORITY_LABELS: dict = {}
 CASE_ACTION_TYPES: List[dict] = []
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "lost_persons_server.lost_persons_db.persons_lost")
+AUTH_SERVICE_INTERNAL_URL = os.environ.get("AUTH_SERVICE_URL", "http://auth_service:58104")
+AUTH_PUBLIC_BASE_URL = os.environ.get("AUTH_PUBLIC_URL", "http://localhost:40155")
+AUTH_LOGIN_URL = os.environ.get("AUTH_LOGIN_URL", f"{AUTH_PUBLIC_BASE_URL.rstrip('/')}/auth/login")
+AUTH_COOKIE_NAME = os.environ.get("AUTH_COOKIE_NAME", "lpm_token")
+AUTH_COOKIE_MAX_AGE = int(os.environ.get("AUTH_COOKIE_MAX_AGE", "3600"))
+
+app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
+
+require_dashboard_permission = require_permissions(["dashboard"])
+require_case_permission = require_permissions(["case_manager"])
+require_pdf_permission = require_permissions(["pdf_reports"])
+require_report_permission = require_permissions(["report"])
 
 class DashboardSocketManager:
     def __init__(self) -> None:
@@ -225,16 +244,59 @@ def _load_action_types() -> None:
 _load_action_types()
 
 
-def _case_manager_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
+def _case_manager_get(
+    path: str,
+    params: Optional[dict] = None,
+    auth_header: Optional[str] = None,
+) -> Optional[dict]:
     url = f"{CASE_MANAGER_INTERNAL_URL}{path}"
     try:
         with httpx.Client(timeout=5.0) as client:
-            response = client.get(url, params=params)
+            headers = {}
+            if auth_header:
+                headers["Authorization"] = auth_header
+            response = client.get(url, params=params, headers=headers)
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as exc:
         print(f"Case manager request failed: {exc}")
         return None
+
+
+def _proxy_auth_header(request: Request) -> Optional[str]:
+    header = request.headers.get("Authorization")
+    if header:
+        return header
+    cookie_token = request.cookies.get(AUTH_COOKIE_NAME)
+    if cookie_token:
+        return f"Bearer {cookie_token}"
+    return None
+
+
+def _current_user_optional(request: Request) -> Optional[TokenPayload]:
+    token = get_token_from_request(request)
+    if not token:
+        return None
+    try:
+        return decode_token(token)
+    except HTTPException:
+        return None
+
+
+def _ensure_ui_permissions(request: Request, permissions: List[str]) -> Optional[TokenPayload]:
+    user = _current_user_optional(request)
+    if not user:
+        return None
+    if not set(permissions).issubset(set(user.permissions)):
+        return None
+    return user
+
+
+def _login_redirect(request: Request) -> RedirectResponse:
+    next_path = request.url.path
+    if request.url.query:
+        next_path = f"{next_path}?{request.url.query}"
+    return RedirectResponse(url=f"/login?next={next_path}", status_code=303)
 
 
 def _current_year() -> int:
@@ -245,7 +307,9 @@ def _copyright_notice() -> str:
     return f"© {_current_year()} {BRAND_OWNER}. Todos los derechos reservados."
 
 
-def _template_context(request: Request, **kwargs) -> dict:
+def _template_context(request: Request, current_user: Optional[TokenPayload] = None, **kwargs) -> dict:
+    if current_user is None:
+        current_user = _current_user_optional(request)
     base = {
         "request": request,
         "current_year": _current_year(),
@@ -264,6 +328,9 @@ def _template_context(request: Request, **kwargs) -> dict:
             }
             for value in CASE_STATUS_VALUES
         ],
+        "current_user": current_user,
+        "auth_login_url": AUTH_LOGIN_URL,
+        "auth_base_url": AUTH_PUBLIC_BASE_URL,
     }
     base.update(kwargs)
     return base
@@ -1802,21 +1869,79 @@ def _build_sensitive_cases_pdf(
     return buffer
 
 
+@app.get("/login", response_class=HTMLResponse)
+async def login_form(request: Request, next: str = "/"):
+    next_path = next if next.startswith("/") else "/"
+    existing_user = _current_user_optional(request)
+    if existing_user:
+        return RedirectResponse(url=next_path or "/dashboard", status_code=303)
+    return templates.TemplateResponse("login.html", _template_context(request, next_url=next_path))
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form("/"),
+):
+    next_path = next if next.startswith("/") else "/"
+    form_payload = {"username": username, "password": password}
+    auth_url = f"{AUTH_SERVICE_INTERNAL_URL.rstrip('/')}/auth/login"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(auth_url, data=form_payload)
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        error_message = "Credenciales inválidas o servicio de autenticación no disponible."
+        if exc.response is not None and exc.response.status_code >= 500:
+            error_message = "Auth service no responde. Intenta más tarde."
+        return templates.TemplateResponse(
+            "login.html",
+            _template_context(request, next_url=next_path, error_message=error_message),
+            status_code=400,
+        )
+    token_payload = response.json()
+    context = _template_context(request, next_url=next_path, token_payload=token_payload)
+    result = templates.TemplateResponse("login_success.html", context)
+    result.set_cookie(
+        AUTH_COOKIE_NAME,
+        token_payload.get("access_token"),
+        max_age=AUTH_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+    )
+    return result
+
+
+@app.post("/logout", response_class=HTMLResponse)
+async def logout(request: Request, next: str = Form("/")):
+    next_path = next if next.startswith("/") else "/"
+    result = templates.TemplateResponse("logout.html", _template_context(request, next_url=next_path))
+    result.delete_cookie(AUTH_COOKIE_NAME)
+    return result
+
+
 @app.get("/", response_class=HTMLResponse)
 async def read_home(request: Request):
     """Landing page with navigation links to the main experiences."""
-    return templates.TemplateResponse("home.html", _template_context(request))
+    current_user = _current_user_optional(request)
+    return templates.TemplateResponse("home.html", _template_context(request, current_user=current_user))
 
 
 @app.get("/reports", response_class=HTMLResponse)
 async def read_reports(request: Request):
     """List the available PDF reports."""
+    if not _ensure_ui_permissions(request, ["pdf_reports"]):
+        return _login_redirect(request)
     return templates.TemplateResponse("reports.html", _template_context(request))
 
 
 @app.get("/report", response_class=HTMLResponse)
 async def read_report(request: Request):
     """Serve the interactive form to submit new lost-person reports."""
+    if not _ensure_ui_permissions(request, ["report"]):
+        return _login_redirect(request)
     return templates.TemplateResponse(
         "tester.html",
         _template_context(request, producer_endpoint=PRODUCER_PUBLIC_URL),
@@ -1826,17 +1951,30 @@ async def read_report(request: Request):
 @app.get("/cases", response_class=HTMLResponse)
 async def manage_cases(request: Request):
     """UI for case management operations."""
+    if not _ensure_ui_permissions(request, ["case_manager"]):
+        return _login_redirect(request)
     return templates.TemplateResponse("cases.html", _template_context(request))
 
 
 @app.get("/case-responsibles/catalog")
-def case_responsible_catalog():
-    data = _case_manager_get("/responsibles/catalog")
+def case_responsible_catalog(
+    request: Request,
+    _: TokenPayload = Depends(require_case_permission),
+):
+    data = _case_manager_get(
+        "/responsibles/catalog",
+        auth_header=_proxy_auth_header(request),
+    )
     return {"items": data or []}
 
 
 @app.get("/cases/{case_id}/report")
-def case_pdf_report(case_id: int, db: Session = Depends(get_db)):
+def case_pdf_report(
+    case_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_pdf_permission),
+):
     case = db.query(Case).filter(Case.case_id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
@@ -1845,7 +1983,8 @@ def case_pdf_report(case_id: int, db: Session = Depends(get_db)):
     gender_map = {"M": "Masculino", "F": "Femenino", "O": "Otro"}
     gender_label = gender_map.get(getattr(person, "gender", None), getattr(person, "gender", "Desconocido"))
 
-    actions = _case_manager_get(f"/cases/{case_id}/actions")
+    auth_header = _proxy_auth_header(request)
+    actions = _case_manager_get(f"/cases/{case_id}/actions", auth_header=auth_header)
     if actions is None:
         actions = [
             {
@@ -1856,7 +1995,10 @@ def case_pdf_report(case_id: int, db: Session = Depends(get_db)):
             }
             for action in case.actions
         ]
-    responsibles = _case_manager_get(f"/cases/{case_id}/responsibles")
+    responsibles = _case_manager_get(
+        f"/cases/{case_id}/responsibles",
+        auth_header=auth_header,
+    )
     if responsibles is None:
         responsibles = [
             {
@@ -1996,6 +2138,8 @@ async def dashboard_ws(websocket: WebSocket):
 @app.get("/reports/operational-alerts", response_class=HTMLResponse)
 async def read_operational_alerts_form(request: Request):
     """Render the filters for the operational alerts report."""
+    if not _ensure_ui_permissions(request, ["pdf_reports"]):
+        return _login_redirect(request)
     today = datetime.utcnow().date()
     default_start = today - timedelta(days=7)
     return _render_operational_alerts_form(
@@ -2017,6 +2161,7 @@ async def generate_operational_alerts_report(
     end_hour: int = Form(...),
     orientation: str = Form("portrait"),
     db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_pdf_permission),
 ):
     """Generate the PDF for operational alerts within the selected window."""
     orientation = (orientation or "portrait").lower()
@@ -2104,6 +2249,8 @@ async def generate_operational_alerts_report(
 @app.get("/reports/demographic-distribution", response_class=HTMLResponse)
 async def read_demographic_distribution_form(request: Request):
     """Render the filters for the demographic distribution report."""
+    if not _ensure_ui_permissions(request, ["pdf_reports"]):
+        return _login_redirect(request)
     today = datetime.utcnow().date()
     default_start = today - timedelta(days=30)
     return _render_demographic_distribution_form(
@@ -2125,6 +2272,7 @@ async def generate_demographic_distribution_report(
     end_hour: int = Form(...),
     orientation: str = Form("portrait"),
     db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_pdf_permission),
 ):
     """Generate the PDF for demographic distribution in the selected window."""
     orientation = (orientation or "portrait").lower()
@@ -2212,6 +2360,8 @@ async def generate_demographic_distribution_report(
 @app.get("/reports/geographic-distribution", response_class=HTMLResponse)
 async def read_geographic_distribution_form(request: Request):
     """Render the filters for the geographic distribution report."""
+    if not _ensure_ui_permissions(request, ["pdf_reports"]):
+        return _login_redirect(request)
     today = datetime.utcnow().date()
     default_start = today - timedelta(days=30)
     return _render_geographic_distribution_form(
@@ -2233,6 +2383,7 @@ async def generate_geographic_distribution_report(
     end_hour: int = Form(...),
     orientation: str = Form("landscape"),
     db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_pdf_permission),
 ):
     """Generate the PDF for geographic distribution in the selected window."""
     orientation = (orientation or "landscape").lower()
@@ -2318,6 +2469,8 @@ async def generate_geographic_distribution_report(
 @app.get("/reports/hourly-analysis", response_class=HTMLResponse)
 async def read_hourly_analysis_form(request: Request):
     """Render the filters for the hourly analysis report."""
+    if not _ensure_ui_permissions(request, ["pdf_reports"]):
+        return _login_redirect(request)
     today = datetime.utcnow().date()
     default_start = today - timedelta(days=14)
     return _render_hourly_analysis_form(
@@ -2339,6 +2492,7 @@ async def generate_hourly_analysis_report(
     end_hour: int = Form(...),
     orientation: str = Form("landscape"),
     db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_pdf_permission),
 ):
     """Generate the PDF for hourly analysis in the selected window."""
     orientation = (orientation or "landscape").lower()
@@ -2422,6 +2576,8 @@ async def generate_hourly_analysis_report(
 @app.get("/reports/executive-summary", response_class=HTMLResponse)
 async def read_executive_summary_form(request: Request):
     """Render the filters for the executive summary report."""
+    if not _ensure_ui_permissions(request, ["pdf_reports"]):
+        return _login_redirect(request)
     today = datetime.utcnow().date()
     default_start = today - timedelta(days=14)
     return _render_executive_summary_form(
@@ -2443,6 +2599,7 @@ async def generate_executive_summary_report(
     end_hour: int = Form(...),
     orientation: str = Form("landscape"),
     db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_pdf_permission),
 ):
     """Generate the PDF for the executive summary in the selected window."""
     orientation = (orientation or "landscape").lower()
@@ -2538,6 +2695,8 @@ async def generate_executive_summary_report(
 @app.get("/reports/sensitive-cases", response_class=HTMLResponse)
 async def read_sensitive_cases_form(request: Request):
     """Render the filters for the sensitive cases report."""
+    if not _ensure_ui_permissions(request, ["pdf_reports"]):
+        return _login_redirect(request)
     today = datetime.utcnow().date()
     default_start = today - timedelta(days=14)
     return _render_sensitive_cases_form(
@@ -2559,6 +2718,7 @@ async def generate_sensitive_cases_report(
     end_hour: int = Form(...),
     orientation: str = Form("landscape"),
     db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_pdf_permission),
 ):
     """Generate the PDF for sensitive cases within the selected window."""
     orientation = (orientation or "landscape").lower()
@@ -2660,6 +2820,8 @@ async def legacy_tester_redirect():
 @app.get("/dashboard", response_class=HTMLResponse)
 async def read_dashboard(request: Request):
     """Serve the live analytics dashboard."""
+    if not _ensure_ui_permissions(request, ["dashboard"]):
+        return _login_redirect(request)
     return templates.TemplateResponse("index.html", _template_context(request))
 
 
@@ -2721,7 +2883,10 @@ def _fallback_hourly_stats(db: Session):
 
 
 @app.get("/stats/age")
-def get_age_stats(db: Session = Depends(get_db)):
+def get_age_stats(
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_dashboard_permission),
+):
     """Return counts by age group."""
     stats = db.query(AggAgeGroup).all()
     if stats:
@@ -2730,7 +2895,10 @@ def get_age_stats(db: Session = Depends(get_db)):
 
 
 @app.get("/stats/gender")
-def get_gender_stats(db: Session = Depends(get_db)):
+def get_gender_stats(
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_dashboard_permission),
+):
     """Return counts by gender."""
     stats = db.query(AggGender).all()
     if stats:
@@ -2739,7 +2907,10 @@ def get_gender_stats(db: Session = Depends(get_db)):
 
 
 @app.get("/stats/hourly")
-def get_hourly_stats(db: Session = Depends(get_db)):
+def get_hourly_stats(
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_dashboard_permission),
+):
     """Return counts by hour of the day."""
     stats = db.query(AggHourly).order_by(AggHourly.hour_of_day).all()
     if stats:
@@ -2747,8 +2918,8 @@ def get_hourly_stats(db: Session = Depends(get_db)):
     return {"data": _fallback_hourly_stats(db)}
 
 
-def _case_summary_stats(db: Session) -> dict:
-    data = _case_manager_get("/cases/stats/summary")
+def _case_summary_stats(db: Session, auth_header: Optional[str]) -> dict:
+    data = _case_manager_get("/cases/stats/summary", auth_header=auth_header)
     if data:
         return data
     # fallback local computation
@@ -2783,9 +2954,13 @@ def _case_summary_stats(db: Session) -> dict:
     }
 
 
-def _case_time_series(db: Session, days: int) -> list[dict]:
+def _case_time_series(db: Session, days: int, auth_header: Optional[str]) -> list[dict]:
     range_param = "24h" if days == 1 else "7d" if days == 7 else "30d"
-    data = _case_manager_get("/cases/stats/time-series", params={"range": range_param})
+    data = _case_manager_get(
+        "/cases/stats/time-series",
+        params={"range": range_param},
+        auth_header=auth_header,
+    )
     if data and "points" in data:
         return data["points"]
     # fallback computation
@@ -2824,19 +2999,32 @@ def _case_time_series(db: Session, days: int) -> list[dict]:
 
 
 @app.get("/case-stats/summary")
-def case_summary(db: Session = Depends(get_db)):
-    return _case_summary_stats(db)
+def case_summary(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_dashboard_permission),
+):
+    return _case_summary_stats(db, _proxy_auth_header(request))
 
 
 @app.get("/case-stats/time-series")
-def case_time_series(range: str = Query("7d", pattern="^(24h|7d|30d)$"), db: Session = Depends(get_db)):
+def case_time_series(
+    request: Request,
+    range: str = Query("7d", pattern="^(24h|7d|30d)$"),
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_dashboard_permission),
+):
     days = 1 if range == "24h" else 7 if range == "7d" else 30
-    points = _case_time_series(db, days)
+    points = _case_time_series(db, days, _proxy_auth_header(request))
     return {"range": range, "points": points}
 
 
 @app.get("/persons/options")
-def person_options(include_assigned: bool = Query(False), db: Session = Depends(get_db)):
+def person_options(
+    include_assigned: bool = Query(False),
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_case_permission),
+):
     query = db.query(PersonLost.person_id, PersonLost.first_name, PersonLost.last_name)
     if not include_assigned:
         query = query.filter(PersonLost.case == None)

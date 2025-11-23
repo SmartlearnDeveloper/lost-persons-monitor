@@ -11,3 +11,5 @@ reportlab
 httpx
 python-multipart
 aiokafka
+passlib[bcrypt]
+python-jose[cryptography]

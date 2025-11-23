@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar sesión · {{ brand_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex align-items-center" style="min-height: 100vh;">
+    <div class="container py-5">
+        <div class="mx-auto" style="max-width: 420px;">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-4">
+                    <h1 class="h4 mb-1">Bienvenido</h1>
+                    <p class="text-muted mb-4">Ingresa tus credenciales para acceder a los módulos de {{ brand_name }}.</p>
+                    {% if error_message %}
+                    <div class="alert alert-danger" role="alert">
+                        {{ error_message }}
+                    </div>
+                    {% endif %}
+                    <form method="post" action="/login" class="vstack gap-3">
+                        <div>
+                            <label for="username" class="form-label">Usuario</label>
+                            <input id="username" name="username" type="text" class="form-control" required autofocus>
+                        </div>
+                        <div>
+                            <label for="password" class="form-label">Contraseña</label>
+                            <input id="password" name="password" type="password" class="form-control" required>
+                        </div>
+                        <input type="hidden" name="next" value="{{ next_url or '/' }}">
+                        <button type="submit" class="btn btn-primary w-100">Iniciar sesión</button>
+                    </form>
+                    <div class="mt-4 text-muted small">
+                        Consejo: el administrador predeterminado es <strong>admin / admin123</strong>. Cambia la contraseña en cuanto sea posible.
+                    </div>
+                </div>
+                <div class="card-footer text-center text-muted small">
+                    {{ brand_name }} · {{ brand_owner }}
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

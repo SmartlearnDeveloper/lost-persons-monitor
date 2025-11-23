@@ -24,6 +24,7 @@ COPY config_loader.py ./config_loader.py
 COPY config.json ./config.json
 COPY config ./config
 COPY scripts ./scripts
+COPY common ./common
 COPY dashboard ./dashboard
 
 ENV PYTHONPATH=/app

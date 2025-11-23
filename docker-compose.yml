@@ -131,6 +131,8 @@ services:
       DB_USER: user
       DB_PASSWORD: password
       DB_NAME: lost_persons_db
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-supersecretjwt}
+      AUTH_TOKEN_URL: http://localhost:40155/auth/login
     networks:
       - monitor-net
 
@@ -142,6 +144,7 @@ services:
     depends_on:
       - mysql
       - case_manager
+      - auth_service
     ports:
       - "40145:58102"
     environment:
@@ -154,6 +157,10 @@ services:
       CASE_MANAGER_PUBLIC_URL: http://localhost:40150
       PRODUCER_PUBLIC_URL: http://localhost:40140/report_person/
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-supersecretjwt}
+      AUTH_TOKEN_URL: http://localhost:40155/auth/login
+      AUTH_PUBLIC_URL: http://localhost:40155
+      AUTH_SERVICE_URL: http://auth_service:58104
     networks:
       - monitor-net
 
@@ -173,6 +180,30 @@ services:
       DB_PASSWORD: password
       DB_NAME: lost_persons_db
       DASHBOARD_REFRESH_URL: http://dashboard:58102/internal/refresh
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-supersecretjwt}
+      AUTH_TOKEN_URL: http://localhost:40155/auth/login
+    networks:
+      - monitor-net
+
+  auth_service:
+    build:
+      context: .
+      dockerfile: auth_service/Dockerfile
+    container_name: auth_service
+    depends_on:
+      - mysql
+    ports:
+      - "40155:58104"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_NAME: lost_persons_db
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-supersecretjwt}
+      AUTH_ALLOWED_ORIGINS: http://localhost:40145,http://127.0.0.1:40145
+      AUTH_DEFAULT_ADMIN_USERNAME: ${AUTH_DEFAULT_ADMIN_USERNAME:-admin}
+      AUTH_DEFAULT_ADMIN_PASSWORD: ${AUTH_DEFAULT_ADMIN_PASSWORD:-admin123}
     networks:
       - monitor-net
 

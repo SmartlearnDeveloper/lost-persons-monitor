@@ -13,25 +13,27 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
    ```bash
    ./scripts/reset_db.sh
    ```
-   Este script levanta MySQL, elimina y crea `lost_persons_db`, y al final ejecuta `SHOW TABLES FROM lost_persons_db` para confirmar que existen `case_responsible_history`, `responsible_contacts`, etc.
+   Este script levanta MySQL, elimina y crea `lost_persons_db`, y al final ejecuta `SHOW TABLES FROM lost_persons_db` para confirmar que existen `case_responsible_history`, `responsible_contacts`, `auth_users`, `auth_roles`, etc.
 4. **Compilar Flink**:
    ```bash
    mvn -f flink-job/pom.xml clean package
    ```
-5. **Levantar la pila completa**:
+5. **Levantar la pila completa (incluye auth_service, dashboard, producer, case manager, Flink, Kafka, Debezium)**:
    ```bash
    docker compose up -d --build
    ```
-6. **Verificar Debezium** (si `connector_init` falló con `curl: (7)`):
+6. **Iniciar sesión**: visita `http://localhost:40145/login` y usa las credenciales por defecto `admin / admin123` para generar un token JWT que desbloquea los módulos de reporte, dashboard, reportes PDF y gestión de casos.
+7. **Verificar Debezium** (si `connector_init` falló con `curl: (7)`):
    ```bash
    docker compose run --rm connector_init
    ```
-7. **Comprobar servicios**:
+8. **Comprobar servicios**:
    ```bash
    docker compose exec jobmanager /opt/flink/bin/flink list
    docker compose exec connect curl -s http://localhost:8083/connectors/lost-persons-connector/status
+    docker compose exec auth_service curl -s http://localhost:58104/health
    ```
-8. **Modo local opcional**: levanta un servicio puntual con `uvicorn` y registra el conector manualmente (`curl localhost:40125/connectors/`).
+9. **Modo local opcional**: levanta un servicio puntual con `uvicorn` y registra el conector manualmente (`curl localhost:40125/connectors/`).
 
 ## URLs principales
 
@@ -41,9 +43,28 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
 | Dashboard en tiempo real           | `http://localhost:40145/dashboard`          |
 | Gestión de casos + PDF             | `http://localhost:40145/cases`              |
 | Catálogo de reportes PDF           | `http://localhost:40145/reports`            |
+| Portal de autenticación            | `http://localhost:40145/login`              |
+| API del servicio de autenticación  | `http://localhost:40155/docs`               |
 | API del producer                   | `http://localhost:40140/docs`               |
 | API del case manager               | `http://localhost:40150/docs`               |
 | Kafka Connect                      | `http://localhost:40125/connectors/`        |
+
+## Autenticación y roles
+
+- `auth_service` expone `/auth/login`, `/auth/register`, `/auth/assign-role` y `/auth/permissions`. Usa el mismo MySQL para guardar usuarios, roles y permisos.
+- Roles disponibles:
+  - `reporter`: puede registrar personas perdidas (`report`) y ver estadísticas básicas (`dashboard`).
+  - `analyst`: incluye permisos para descargar reportes PDF (`pdf_reports`).
+  - `coordinator`: añade acceso al case manager (`case_manager`).
+  - `admin`: suma `manage_users` para crear/editar usuarios desde `/auth/register` y `/auth/assign-role`.
+- Todos los frontales (`/report`, `/dashboard`, `/cases`, `/reports`) redirigen a `/login` si no detectan un JWT vigente. El login guarda el token en `localStorage` y en una cookie HTTP-only (`lpm_token`) para que FastAPI valide tanto `fetch` como los formularios tradicionales (PDF).
+- Para automatizar pruebas, solicita un token con cURL:
+  ```bash
+  curl -X POST http://localhost:40155/auth/login \
+       -H "Content-Type: application/x-www-form-urlencoded" \
+       -d 'username=admin&password=admin123'
+  ```
+  El `access_token` debe enviarse como `Authorization: Bearer <token>` en cada microservicio.
 
 ## Flujo de datos
 
@@ -59,11 +80,15 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
 - `FLINK_LOCAL_TIMEZONE`: zona horaria para las funciones de fecha/hora en Flink.
 - `CASE_MANAGER_URL` / `CASE_MANAGER_PUBLIC_URL`: endpoints interno y expuesto para el dashboard.
 - `DASHBOARD_REFRESH_URL`: ruta interna (`http://dashboard:58102/internal/refresh`) que el case manager invoca tras cada cambio.
+- `AUTH_SECRET_KEY`: clave compartida para firmar/verificar los JWT. Debe mantenerse idéntica en `auth_service`, producer, dashboard y case manager.
+- `AUTH_PUBLIC_URL`: URL expuesta del servicio de autenticación (`http://localhost:40155` en local).
+- `AUTH_TOKEN_URL`: endpoint usado por Swagger/OAuth2 (`http://localhost:40155/auth/login`).
+- `AUTH_DEFAULT_ADMIN_USERNAME` / `AUTH_DEFAULT_ADMIN_PASSWORD`: credenciales creadas automáticamente por `db_init.py` cuando la base se reinicia.
 
 ## Validación tras despliegue
 
-1. `docker compose ps` → todos los contenedores deben estar “Up”.
-2. `SHOW TABLES FROM lost_persons_db` → verifica que existan `case_responsible_history`, `responsible_contacts` y `case_actions` con `responsible_name`.
+1. `docker compose ps` → todos los contenedores (incluido `auth_service`) deben estar “Up”.
+2. `SHOW TABLES FROM lost_persons_db` → verifica que existan `case_responsible_history`, `responsible_contacts`, `case_actions` con `responsible_name` y todas las tablas `auth_*`.
 3. Envía un reporte desde `/report`, asigna un responsable en `/cases`, registra una acción y descarga el PDF para confirmar que Prioridad (Alta/Media/Baja) y el responsable aparecen en español.
 4. Observa `/dashboard`: los KPIs y gráficas deberían reaccionar sin recargar.
 
@@ -72,6 +97,8 @@ Lost Persons Monitor es una plataforma CDC que recibe reportes de personas perdi
 - `producer/`: API de entrada, crea personas y casos.
 - `case_manager/`: control de casos, acciones, responsables y KPIs.
 - `dashboard/`: Jinja + API para dashboard, formularios y reportes PDF.
+- `auth_service/`: microservicio FastAPI (JWT + roles) que centraliza login/registro.
+- `common/`: utilitarios compartidos (por ejemplo `common/security.py`). Cada vez que edites este directorio, recompila producer, dashboard, case_manager y auth_service.
 - `flink/`, `flink-job/`: job de streaming (SQL/Java) que alimenta las tablas agregadas.
 - `scripts/`: herramientas (`db_init.py`, `reset_db.sh`, `stack_check.py`).
 - `config/`: plantillas (`config.json`, `debezium-connector.json`, prioridades, etc.).

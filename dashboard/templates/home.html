@@ -32,6 +32,16 @@
     </style>
 </head>
 <body>
+    <div class="position-absolute top-0 end-0 p-3" style="width: 320px;">
+        <div class="d-flex justify-content-end align-items-center gap-2" id="sessionControls">
+            <span class="text-muted small" data-lpm-username></span>
+            <a class="btn btn-sm btn-primary" href="/login" data-lpm-login>Iniciar sesión</a>
+            <form method="post" action="/logout" class="d-inline-block d-none" data-lpm-logout>
+                <input type="hidden" name="next" value="{{ request.url.path }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Cerrar sesión</button>
+            </form>
+        </div>
+    </div>
     <div class="card">
         <div class="card-header text-center py-4">
             <h1 class="h3 mb-1">{{ brand_name }}</h1>
@@ -93,5 +103,14 @@
             <div class="mt-1">{{ brand_copyright }}</div>
         </div>
     </div>
+    <script>window.LPM_AUTH_LOGIN_URL = "{{ auth_login_url }}";</script>
+    <script src="/static/js/auth.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.LPMAuth) {
+                window.LPMAuth.populateSessionBadge('#sessionControls');
+            }
+        });
+    </script>
 </body>
 </html>

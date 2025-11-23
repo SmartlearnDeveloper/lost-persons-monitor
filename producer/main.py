@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from producer import models
 from producer.database import get_db
 from scripts.db_init import PersonLost, Case, CaseStatusEnum
+from common.security import TokenPayload, require_permissions
 
 DEFAULT_TIMEZONE = "America/Guayaquil"
 _tz_name = os.getenv("REPORT_LOCAL_TZ", DEFAULT_TIMEZONE)
@@ -41,7 +42,11 @@ app.add_middleware(
 )
 
 @app.post("/report_person/", response_model=models.ReportPersonPayload)
-def report_person(payload: models.ReportPersonPayload, db: Session = Depends(get_db)):
+def report_person(
+    payload: models.ReportPersonPayload,
+    db: Session = Depends(get_db),
+    current_user: TokenPayload = Depends(require_permissions(["report"])),
+):
     """
     Endpoint para reportar una persona como perdida.
     Los datos se validan con Pydantic y se guardan en MySQL usando SQLAlchemy.
@@ -59,7 +64,8 @@ def report_person(payload: models.ReportPersonPayload, db: Session = Depends(get
         lost_timestamp=_local_now(),
         lost_location=payload.lost_location,
         details=payload.details,
-        status='active'
+        status='active',
+        created_by=current_user.user_id,
     )
     
     try:
@@ -86,6 +92,7 @@ def report_person(payload: models.ReportPersonPayload, db: Session = Depends(get
 def list_reports(
     limit: int = Query(10, ge=1, le=100, description="Número máximo de reportes recientes a devolver."),
     db: Session = Depends(get_db),
+    _: TokenPayload = Depends(require_permissions(["dashboard"])),
 ):
     """
     Devuelve una lista de reportes recientes para facilitar la verificación manual desde la UI.

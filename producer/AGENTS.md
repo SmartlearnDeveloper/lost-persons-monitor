@@ -17,4 +17,6 @@ uvicorn producer.main:app --reload --host 0.0.0.0 --port 58101
 - Importa los modelos de `scripts/db_init.py` para mantener el ORM alineado con la base.
 - Cada inserción debe envolver `db.add()`, `db.flush()` y `db.commit()`; usa `db.rollback()` en excepciones.
 - Respectar `REPORT_LOCAL_TZ` para sellar `lost_timestamp` con hora local.
+- Todos los endpoints exigen un JWT válido (`Authorization: Bearer …`). Usa `common/security.require_permissions` para proteger rutas: `/report_person/` requiere `report`, `/report_person/?limit=…` requiere `dashboard`.
+- Si editas `common/`, reconstruye esta imagen para evitar inconsistencias en la validación del token.
 - Tests en `tests/producer/` (usar `fastapi.TestClient` y DB mockeada).
